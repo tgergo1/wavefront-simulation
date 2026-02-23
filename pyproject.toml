@@ -1,0 +1,16 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.13"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "wavefront-simulation"
+version = "0.1.0"
+description = "Scientific N-D wave simulation library"
+readme = "README.md"
+license = { text = "GPL-3.0-only" }
+requires-python = ">=3.10"
+
+[tool.scikit-build]
+cmake.source-dir = "."
+wheel.packages = ["python/wavefront"]
+cmake.args = ["-DWAVEFRONT_BUILD_TESTS=OFF"]
