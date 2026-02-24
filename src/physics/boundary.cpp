@@ -84,9 +84,9 @@ BoundaryMetrics apply_boundary_conditions(
           break;
         }
         case BoundaryType::Periodic: {
-          std::vector<std::size_t> opposite = index;
-          opposite[boundary.axis] = boundary.upper_face ? 0 : (grid.shape()[boundary.axis] - 1);
-          next = current_field.at_index(opposite, component);
+          // Periodicity is handled directly by wrapped neighbor stencils in the core solver.
+          // Avoid overriding `next` here with lagged values from `current`, which introduces
+          // non-physical phase artifacts at the boundary.
           break;
         }
         case BoundaryType::Impedance: {
@@ -99,8 +99,9 @@ BoundaryMetrics apply_boundary_conditions(
           const double sigma = parameter > 0.0 ? parameter : pml_sigma_default;
           const double decay = std::exp(-sigma * dt);
           if (split_pml) {
-            pml_memory[offset] = decay * pml_memory[offset] + (1.0 - decay) * current;
-            next = decay * next - sigma * dt * pml_memory[offset];
+            const double velocity = (current - previous) / dt;
+            pml_memory[offset] = decay * pml_memory[offset] + (1.0 - decay) * velocity;
+            next = decay * next - (1.0 - decay) * dt * pml_memory[offset];
           } else {
             next = decay * next;
           }

@@ -9,6 +9,7 @@ Requirements:
 from __future__ import annotations
 
 import binascii
+import json
 import math
 import shutil
 import struct
@@ -27,6 +28,8 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "docs" / "assets"
+CHECKS_DIR = ASSETS / "_checks"
+VALIDATION_SUMMARY: dict[str, dict[str, float | int]] = {}
 
 
 RGB = Tuple[int, int, int]
@@ -140,8 +143,8 @@ def periodic_boundaries_nd(dims: int) -> List["wf.BoundarySpec"]:
     return out
 
 
-def pml_boundaries() -> List["wf.BoundarySpec"]:
-    return pml_boundaries_nd(2)
+def pml_boundaries(sigma: str = "10.0") -> List["wf.BoundarySpec"]:
+    return pml_boundaries_nd(2, sigma)
 
 
 def periodic_boundaries() -> List["wf.BoundarySpec"]:
@@ -162,7 +165,7 @@ def make_problem(
     p.grid = wf.GridSpec()
     p.grid.dims = 2
     p.grid.shape = [nx, ny]
-    p.grid.spacing = [0.02, 0.02]
+    p.grid.spacing = [1.0 / max(1, nx - 1), 1.0 / max(1, ny - 1)]
     p.grid.origin = [0.0, 0.0]
     p.field_components = 1
 
@@ -190,7 +193,7 @@ def make_problem_3d(
     p.grid = wf.GridSpec()
     p.grid.dims = 3
     p.grid.shape = [nx, ny, nz]
-    p.grid.spacing = [0.03, 0.03, 0.03]
+    p.grid.spacing = [1.0 / max(1, nx - 1), 1.0 / max(1, ny - 1), 1.0 / max(1, nz - 1)]
     p.grid.origin = [0.0, 0.0, 0.0]
     p.field_components = 1
 
@@ -281,6 +284,79 @@ def max_abs_in_volumes(volumes: Sequence[Volume3D]) -> float:
     return max(m, 1.0e-12)
 
 
+def rms_region(field: Field2D, x0: int, x1: int, y0: int, y1: int) -> float:
+    x0 = max(0, x0)
+    y0 = max(0, y0)
+    x1 = min(len(field[0]), x1)
+    y1 = min(len(field), y1)
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+
+    accum = 0.0
+    count = 0
+    for y in range(y0, y1):
+        row = field[y]
+        for x in range(x0, x1):
+            value = row[x]
+            accum += value * value
+            count += 1
+    return math.sqrt(accum / max(1, count))
+
+
+def rms_rows_at_x(field: Field2D, x: int, rows: Sequence[int]) -> float:
+    if not rows:
+        return 0.0
+    x = clamp(float(x), 0.0, float(len(field[0]) - 1))
+    xi = int(x)
+    accum = 0.0
+    count = 0
+    for row in rows:
+        if row < 0 or row >= len(field):
+            continue
+        value = field[row][xi]
+        accum += value * value
+        count += 1
+    return math.sqrt(accum / max(1, count))
+
+
+def abs_profile_at_x(field: Field2D, x: int) -> List[float]:
+    x = int(clamp(float(x), 0.0, float(len(field[0]) - 1)))
+    return [abs(field[y][x]) for y in range(len(field))]
+
+
+def count_prominent_peaks(values: Sequence[float], threshold_fraction: float) -> int:
+    if len(values) < 3:
+        return 0
+    peak_threshold = max(values) * threshold_fraction if values else 0.0
+    peaks = 0
+    for i in range(1, len(values) - 1):
+        if values[i] > values[i - 1] and values[i] >= values[i + 1] and values[i] > peak_threshold:
+            peaks += 1
+    return peaks
+
+
+def l2_difference(lhs: Field2D, rhs: Field2D) -> float:
+    if len(lhs) != len(rhs) or len(lhs[0]) != len(rhs[0]):
+        raise ValueError("Field shape mismatch in l2_difference")
+    accum = 0.0
+    count = 0
+    for y in range(len(lhs)):
+        for x in range(len(lhs[0])):
+            d = lhs[y][x] - rhs[y][x]
+            accum += d * d
+            count += 1
+    return math.sqrt(accum / max(1, count))
+
+
+def demean_field(field: Field2D) -> Field2D:
+    ny = len(field)
+    nx = len(field[0]) if ny > 0 else 0
+    if nx == 0 or ny == 0:
+        return field
+    mean = sum(value for row in field for value in row) / float(nx * ny)
+    return [[value - mean for value in row] for row in field]
+
+
 def render_frame(
     panels: Sequence[Field2D],
     scale: float,
@@ -361,7 +437,8 @@ def render_frame(
             src_row = panel[ny - 1 - y]
             overlay_row = overlay[ny - 1 - y] if overlay is not None else None
             for x in range(nx):
-                color = color_for(src_row[x] / scale)
+                # Compress dynamic range so low-amplitude far-field structure remains visible.
+                color = color_for(math.tanh(1.8 * src_row[x] / scale))
                 if overlay_row is not None:
                     mask = overlay_row[x]
                     if mask == 1:
@@ -500,7 +577,7 @@ def render_volume_frame(
     nx = len(volume[0][0]) if ny > 0 else 0
 
     particles: List[Tuple[float, int, int, RGB, float, int]] = []
-    threshold = 0.03 * scale
+    threshold = 0.06 * scale
 
     for z in range(nz):
         for y in range(ny):
@@ -514,10 +591,10 @@ def render_volume_frame(
                 yn = 2.0 * (y / max(1, ny - 1) - 0.5)
                 zn = 2.0 * (z / max(1, nz - 1) - 0.5)
                 sx, sy, depth = project(xn, yn, zn)
-                color = color_for(value / scale)
+                color = color_for(math.tanh(2.0 * value / scale))
 
                 strength = av / scale
-                alpha = clamp(0.08 + 0.46 * strength, 0.08, 0.62)
+                alpha = clamp(0.10 + 0.52 * strength, 0.10, 0.68)
                 radius = 1 if strength < 0.35 else 2
                 particles.append((depth, sx, sy, color, alpha, radius))
 
@@ -626,9 +703,9 @@ def scenario_modes_evolution() -> Path:
         ny,
         density_expr="1.0",
         stiffness_expr="1.2 + 0.8*tanh((x_0-0.72)/0.04)",
-        source_expr="18.0*sin(25*t)*exp(-((x_0-0.30)*(x_0-0.30)+(x_1-0.72)*(x_1-0.72))/0.02)",
+        source_expr="34.0*sin(25*t)*exp(-((x_0-0.30)*(x_0-0.30)+(x_1-0.72)*(x_1-0.72))/0.02)",
         damping_expr="0.0005",
-        dispersion_expr="8.0",
+        dispersion_expr="20.0",
         boundaries=pml_boundaries(),
     )
 
@@ -646,6 +723,18 @@ def scenario_modes_evolution() -> Path:
         for solver in solvers:
             solver.run(steps_per_frame)
         frames_data.append([sample_field(solver, nx, ny) for solver in solvers])
+
+    final_linear, final_nonlinear, final_micro = frames_data[-1]
+    linear_vs_nonlinear = l2_difference(final_linear, final_nonlinear)
+    linear_vs_micro = l2_difference(final_linear, final_micro)
+    if linear_vs_nonlinear < 5.0e-4 or linear_vs_micro < 5.0e-4:
+        raise RuntimeError(
+            "Mode demo invalid: interchangeable modes are not producing meaningfully distinct wavefields."
+        )
+    VALIDATION_SUMMARY["modes_evolution"] = {
+        "linear_vs_nonlinear_l2": linear_vs_nonlinear,
+        "linear_vs_micro_l2": linear_vs_micro,
+    }
 
     return generate_gif(
         "wavefield-modes-evolution.gif",
@@ -681,6 +770,19 @@ def scenario_interface_reflection() -> Path:
         solver.run(steps_per_frame)
         frames_data.append([sample_field(solver, nx, ny)])
 
+    final_panel = frames_data[-1][0]
+    reflected_rms = rms_region(final_panel, 0, int(0.45 * nx), int(0.20 * ny), int(0.80 * ny))
+    transmitted_rms = rms_region(final_panel, int(0.75 * nx), nx, int(0.20 * ny), int(0.80 * ny))
+    if reflected_rms < 1.0e-4 or transmitted_rms < 1.0e-4:
+        raise RuntimeError(
+            f"Interface demo invalid: reflection/transmission not both visible "
+            f"(reflected={reflected_rms:.3e}, transmitted={transmitted_rms:.3e})."
+        )
+    VALIDATION_SUMMARY["interface_reflection"] = {
+        "reflected_rms": reflected_rms,
+        "transmitted_rms": transmitted_rms,
+    }
+
     return generate_gif(
         "wavefield-interface-reflection.gif",
         frame_panels=frames_data,
@@ -691,9 +793,9 @@ def scenario_interface_reflection() -> Path:
 
 
 def scenario_boundary_comparison() -> Path:
-    nx = 48
-    ny = 48
-    frames = 64
+    nx = 72
+    ny = 56
+    frames = 86
     steps_per_frame = 6
 
     problem_periodic = make_problem(
@@ -701,7 +803,7 @@ def scenario_boundary_comparison() -> Path:
         ny,
         density_expr="1.0",
         stiffness_expr="1.5",
-        source_expr="11.0*sin(26*t)*exp(-((x_0-0.5)*(x_0-0.5)+(x_1-0.5)*(x_1-0.5))/0.02)",
+        source_expr="22.0*sin(34*t)*exp(-32*t)*exp(-((x_0-0.18)*(x_0-0.18))/0.0007)",
         damping_expr="0.0",
         dispersion_expr="0.0",
         boundaries=periodic_boundaries(),
@@ -711,25 +813,64 @@ def scenario_boundary_comparison() -> Path:
         ny,
         density_expr="1.0",
         stiffness_expr="1.5",
-        source_expr="11.0*sin(26*t)*exp(-((x_0-0.5)*(x_0-0.5)+(x_1-0.5)*(x_1-0.5))/0.02)",
+        source_expr="22.0*sin(34*t)*exp(-32*t)*exp(-((x_0-0.18)*(x_0-0.18))/0.0007)",
         damping_expr="0.0",
         dispersion_expr="0.0",
-        boundaries=pml_boundaries(),
+        boundaries=pml_boundaries("10.0"),
     )
 
     solver_periodic = wf.Solver(problem_periodic, make_config(wf.SolverMode.LinearApprox))
     solver_pml = wf.Solver(problem_pml, make_config(wf.SolverMode.LinearApprox))
-    solver_periodic.run(110)
-    solver_pml.run(110)
+    solver_periodic.run(60)
+    solver_pml.run(60)
 
     frames_data: List[List[Field2D]] = []
+    early_periodic = 0.0
+    early_pml = 0.0
+    late_periodic = 0.0
+    late_pml = 0.0
     for _ in range(frames):
         solver_periodic.run(steps_per_frame)
         solver_pml.run(steps_per_frame)
-        frames_data.append([
-            sample_field(solver_periodic, nx, ny),
-            sample_field(solver_pml, nx, ny),
-        ])
+        panel_periodic_raw = sample_field(solver_periodic, nx, ny)
+        panel_pml_raw = sample_field(solver_pml, nx, ny)
+        frames_data.append([demean_field(panel_periodic_raw), demean_field(panel_pml_raw)])
+
+        if len(frames_data) == 15:
+            early_periodic = rms_region(panel_periodic_raw, int(0.90 * nx), nx, 0, ny)
+            early_pml = rms_region(panel_pml_raw, int(0.90 * nx), nx, 0, ny)
+        if len(frames_data) == frames:
+            late_periodic = rms_region(panel_periodic_raw, int(0.90 * nx), nx, 0, ny)
+            late_pml = rms_region(panel_pml_raw, int(0.90 * nx), nx, 0, ny)
+
+    diag_periodic = json.loads(solver_periodic.diagnostics_json())
+    diag_pml = json.loads(solver_pml.diagnostics_json())
+    if early_periodic < 1.0e-4:
+        raise RuntimeError(
+            f"Boundary demo invalid: periodic early right-strip RMS too small ({early_periodic:.3e})."
+        )
+    if early_pml > early_periodic * 0.2:
+        raise RuntimeError(
+            f"Boundary demo invalid: PML does not suppress early wrap-around enough "
+            f"({early_pml:.3e} vs periodic {early_periodic:.3e})."
+        )
+    if late_pml > late_periodic * 0.45:
+        raise RuntimeError(
+            f"Boundary demo invalid: late-time PML strip RMS too large "
+            f"({late_pml:.3e} vs periodic {late_periodic:.3e})."
+        )
+    if float(diag_pml["absorbed_energy"]) <= 0.5:
+        raise RuntimeError(
+            f"Boundary demo invalid: absorbed_energy too small for PML ({diag_pml['absorbed_energy']})."
+        )
+    VALIDATION_SUMMARY["boundary_comparison"] = {
+        "early_periodic_right_rms": early_periodic,
+        "early_pml_right_rms": early_pml,
+        "late_periodic_right_rms": late_periodic,
+        "late_pml_right_rms": late_pml,
+        "periodic_absorbed_energy": float(diag_periodic["absorbed_energy"]),
+        "pml_absorbed_energy": float(diag_pml["absorbed_energy"]),
+    }
 
     return generate_gif(
         "wavefield-boundary-comparison.gif",
@@ -741,37 +882,38 @@ def scenario_boundary_comparison() -> Path:
 
 
 def scenario_double_slit() -> Path:
-    nx = 64
-    ny = 64
-    frames = 72
-    steps_per_frame = 5
+    nx = 96
+    ny = 72
+    frames = 96
+    steps_per_frame = 6
 
-    # Wall in x_0 with two open apertures in x_1.
-    wall_expr = "0.5*(tanh((x_0-0.48)/0.006)-tanh((x_0-0.52)/0.006))"
-    slit_1 = "0.5*(tanh((x_1-0.28)/0.012)-tanh((x_1-0.38)/0.012))"
-    slit_2 = "0.5*(tanh((x_1-0.62)/0.012)-tanh((x_1-0.72)/0.012))"
+    # Opaque wall in x_0 with two transmissive slits in x_1.
+    wall_x0 = 0.485
+    wall_x1 = 0.515
+    slit_ranges = [(0.36, 0.44), (0.56, 0.64)]
+
+    wall_expr = "0.5*(tanh((x_0-0.485)/0.003)-tanh((x_0-0.515)/0.003))"
+    slit_1 = "0.5*(tanh((x_1-0.36)/0.006)-tanh((x_1-0.44)/0.006))"
+    slit_2 = "0.5*(tanh((x_1-0.56)/0.006)-tanh((x_1-0.64)/0.006))"
     aperture = f"min(1.0,({slit_1})+({slit_2}))"
     blocker = f"({wall_expr})*(1.0-({aperture}))"
 
     problem = make_problem(
         nx,
         ny,
-        density_expr=f"1.0 + 10.0*({blocker})",
-        stiffness_expr=f"1.2 - 1.08*({blocker})",
-        source_expr="14.0*sin(24*t)*exp(-((x_0-0.12)*(x_0-0.12))/0.0008)*exp(-((x_1-0.50)*(x_1-0.50))/0.20)",
-        damping_expr=f"0.0004 + 2.0*({blocker})",
-        dispersion_expr="0.02",
-        boundaries=pml_boundaries(),
+        density_expr=f"1.0 + 600.0*({blocker})",
+        stiffness_expr=f"1.6 - 1.598*({blocker})",
+        source_expr="34.0*sin(36*t)*exp(-18*t)*exp(-((x_0-0.12)*(x_0-0.12))/0.0005)",
+        damping_expr=f"0.0004 + 45.0*({blocker})",
+        dispersion_expr="0.0",
+        boundaries=pml_boundaries("14.0"),
     )
 
     solver = wf.Solver(problem, make_config(wf.SolverMode.LinearApprox))
-    solver.run(110)
+    solver.run(40)
 
-    dx = 0.02
-    dy = 0.02
-    wall_x0 = 0.48
-    wall_x1 = 0.52
-    slit_ranges = [(0.28, 0.38), (0.62, 0.72)]
+    dx = 1.0 / max(1, nx - 1)
+    dy = 1.0 / max(1, ny - 1)
     overlay: Overlay2D = [[0 for _ in range(nx)] for _ in range(ny)]
     for y in range(ny):
         yv = y * dy
@@ -785,9 +927,56 @@ def scenario_double_slit() -> Path:
                     overlay[y][x] = 1
 
     frames_data: List[List[Field2D]] = []
+    early_right_rms = 0.0
+    slit_to_blocked_ratio = 0.0
+    screen_peak_count = 0
+    screen_max = 0.0
+
+    near_wall_x = int(0.535 * nx)
+    screen_x = int(0.88 * nx)
+    slit_rows = list(range(int(0.36 * ny), int(0.44 * ny))) + list(range(int(0.56 * ny), int(0.64 * ny)))
+    blocked_rows = (
+        list(range(0, int(0.30 * ny)))
+        + list(range(int(0.47 * ny), int(0.53 * ny)))
+        + list(range(int(0.70 * ny), ny))
+    )
+
     for _ in range(frames):
         solver.run(steps_per_frame)
-        frames_data.append([sample_field(solver, nx, ny)])
+        panel = sample_field(solver, nx, ny)
+        frames_data.append([panel])
+
+        if len(frames_data) == 15:
+            early_right_rms = rms_region(panel, int(0.86 * nx), nx, 0, ny)
+        if len(frames_data) == 46:
+            slit_rms = rms_rows_at_x(panel, near_wall_x, slit_rows)
+            blocked_rms = rms_rows_at_x(panel, near_wall_x, blocked_rows)
+            slit_to_blocked_ratio = slit_rms / max(1.0e-12, blocked_rms)
+        if len(frames_data) == frames:
+            screen_profile = abs_profile_at_x(panel, screen_x)
+            screen_peak_count = count_prominent_peaks(screen_profile, 0.22)
+            screen_max = max(screen_profile)
+
+    if early_right_rms > 1.0e-4:
+        raise RuntimeError(
+            f"Double-slit demo invalid: early far-field RMS too high ({early_right_rms:.3e}); "
+            "possible phantom/right-side leakage."
+        )
+    if slit_to_blocked_ratio < 2.0:
+        raise RuntimeError(
+            f"Double-slit demo invalid: wall blocking too weak (slit/blocked ratio={slit_to_blocked_ratio:.2f})."
+        )
+    if screen_peak_count < 3 or screen_max < 1.0e-4:
+        raise RuntimeError(
+            f"Double-slit demo invalid: interference fringe structure too weak "
+            f"(peaks={screen_peak_count}, screen_max={screen_max:.3e})."
+        )
+    VALIDATION_SUMMARY["double_slit"] = {
+        "early_far_right_rms": early_right_rms,
+        "slit_to_blocked_ratio": slit_to_blocked_ratio,
+        "screen_peak_count": screen_peak_count,
+        "screen_max_abs": screen_max,
+    }
 
     return generate_gif(
         "wavefield-double-slit.gif",
@@ -800,28 +989,28 @@ def scenario_double_slit() -> Path:
 
 
 def scenario_3d_volume() -> Path:
-    nx = 28
-    ny = 28
-    nz = 28
-    frames = 60
+    nx = 31
+    ny = 31
+    nz = 31
+    frames = 72
     steps_per_frame = 4
 
     problem = make_problem_3d(
         nx,
         ny,
         nz,
-        stiffness_expr="1.45",
+        stiffness_expr="1.5",
         source_expr=(
-            "26.0*sin(38*t)*exp(-5.0*t)*exp(-((x_0-0.50)*(x_0-0.50)+"
-            "(x_1-0.50)*(x_1-0.50)+(x_2-0.50)*(x_2-0.50))/0.010)"
+            "32.0*sin(46*t)*exp(-24*t)*exp(-((x_0-0.50)*(x_0-0.50)+"
+            "(x_1-0.50)*(x_1-0.50)+(x_2-0.50)*(x_2-0.50))/0.0018)"
         ),
-        damping_expr="0.0002",
+        damping_expr="0.0001",
         dispersion_expr="0.0",
-        boundaries=pml_boundaries_nd(3),
+        boundaries=pml_boundaries_nd(3, "10.0"),
     )
 
-    solver = wf.Solver(problem, make_config(wf.SolverMode.NonlinearContinuum))
-    solver.run(140)
+    solver = wf.Solver(problem, make_config(wf.SolverMode.LinearApprox))
+    solver.run(70)
 
     volumes: List[Volume3D] = []
     for _ in range(frames):
@@ -829,6 +1018,44 @@ def scenario_3d_volume() -> Path:
         volumes.append(sample_volume(solver, nx, ny, nz))
 
     scale = max_abs_in_volumes(volumes)
+    mid = volumes[len(volumes) // 2]
+    cx = nx // 2
+    cy = ny // 2
+    cz = nz // 2
+    r = max(3, min(nx, ny, nz) // 6)
+    axis_samples = [
+        abs(mid[cz][cy][cx + r]),
+        abs(mid[cz][cy][cx - r]),
+        abs(mid[cz][cy + r][cx]),
+        abs(mid[cz][cy - r][cx]),
+        abs(mid[cz + r][cy][cx]),
+        abs(mid[cz - r][cy][cx]),
+    ]
+    axis_max = max(axis_samples)
+    axis_min = min(axis_samples)
+    isotropy_spread = (axis_max - axis_min) / max(axis_max, 1.0e-12)
+    active_voxels = 0
+    threshold = 0.08 * scale
+    for z in range(nz):
+        for y in range(ny):
+            for x in range(nx):
+                if abs(mid[z][y][x]) > threshold:
+                    active_voxels += 1
+
+    if isotropy_spread > 0.35:
+        raise RuntimeError(
+            f"3D demo invalid: isotropy spread too high ({isotropy_spread:.3f}) for homogeneous medium."
+        )
+    if active_voxels < 120:
+        raise RuntimeError(
+            f"3D demo invalid: volumetric support too sparse ({active_voxels} active voxels)."
+        )
+    VALIDATION_SUMMARY["volume_3d"] = {
+        "isotropy_spread": isotropy_spread,
+        "active_voxels_midframe": active_voxels,
+        "scale": scale,
+    }
+
     output = ASSETS / "wavefield-3d-volume.gif"
     ASSETS.mkdir(parents=True, exist_ok=True)
 
@@ -855,6 +1082,7 @@ def require_ffmpeg() -> None:
 def main() -> None:
     require_ffmpeg()
     ASSETS.mkdir(parents=True, exist_ok=True)
+    CHECKS_DIR.mkdir(parents=True, exist_ok=True)
 
     outputs = [
         scenario_modes_evolution(),
@@ -864,9 +1092,13 @@ def main() -> None:
         scenario_3d_volume(),
     ]
 
+    metrics_path = CHECKS_DIR / "validation-metrics.json"
+    metrics_path.write_text(json.dumps(VALIDATION_SUMMARY, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
     for output in outputs:
         size_kb = output.stat().st_size / 1024.0
         print(f"wrote {output} ({size_kb:.1f} KiB)")
+    print(f"wrote {metrics_path}")
 
 
 if __name__ == "__main__":

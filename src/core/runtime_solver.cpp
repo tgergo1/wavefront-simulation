@@ -51,6 +51,24 @@ std::string precision_name(PrecisionMode mode) {
   return "Unknown";
 }
 
+struct FaceBoundary {
+  BoundaryType type = BoundaryType::Neumann;
+  double parameter = 0.0;
+  bool specified = false;
+};
+
+double parse_boundary_parameter_scalar(const SymbolicExpr& expression, double fallback) {
+  try {
+    std::size_t pos = 0;
+    const double value = std::stod(expression.text, &pos);
+    if (pos == expression.text.size()) {
+      return value;
+    }
+  } catch (...) {
+  }
+  return fallback;
+}
+
 class RuntimeSolver final : public ISolver {
  public:
   void initialize(const ProblemSpec& problem, const SolverConfig& config) override {
@@ -59,6 +77,7 @@ class RuntimeSolver final : public ISolver {
     problem_ = problem;
     config_ = config;
     grid_ = GridLayout(problem_.grid);
+    configure_face_boundaries();
     previous_ = FieldBuffer<double>(grid_, problem_.field_components);
     current_ = FieldBuffer<double>(grid_, problem_.field_components);
     next_ = FieldBuffer<double>(grid_, problem_.field_components);
@@ -73,25 +92,15 @@ class RuntimeSolver final : public ISolver {
     dispersion_expr_ = compile_or_default(problem_.medium.dispersion, "0.0");
     source_expr_ = compile_or_default(problem_.source_term, "0.0");
 
-    EvaluationContext center_context;
-    center_context.x.resize(grid_.dims(), 0.0L);
-    center_context.u.resize(problem_.field_components, 0.0L);
-
-    for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
-      center_context.x[axis] = static_cast<long double>(grid_.origin()[axis] +
-                                                        (grid_.shape()[axis] / 2) * grid_.spacing()[axis]);
+    double max_speed = 0.0;
+    for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
+      const EvaluationContext context = coefficient_context(flat);
+      const double density = positive_or_floor(density_expr_.evaluate_double(context), 1.0e-12);
+      const double stiffness = positive_or_floor(stiffness_expr_.evaluate_double(context), 1.0e-12);
+      max_speed = std::max(max_speed, phase_velocity(stiffness, density));
     }
-
-    const double density = positive_or_floor(density_expr_.evaluate_double(center_context), 1.0e-12);
-    const double stiffness = positive_or_floor(stiffness_expr_.evaluate_double(center_context), 1.0e-12);
-    const double speed = phase_velocity(stiffness, density);
-    dt_ = (config_.cfl * grid_.min_spacing()) / (speed * std::sqrt(static_cast<double>(grid_.dims())));
-
-    const std::size_t center_flat = center_flat_index();
-    for (std::size_t component = 0; component < problem_.field_components; ++component) {
-      current_.at_flat(center_flat, component) = 1.0e-6;
-      previous_.at_flat(center_flat, component) = 1.0e-6;
-    }
+    max_speed = positive_or_floor(max_speed, 1.0e-12);
+    dt_ = (config_.cfl * grid_.min_spacing()) / (max_speed * std::sqrt(static_cast<double>(grid_.dims())));
 
     step_count_ = 0;
     last_energy_ = compute_energy();
@@ -193,21 +202,92 @@ class RuntimeSolver final : public ISolver {
   }
 
  private:
-  std::size_t center_flat_index() const {
-    std::vector<std::size_t> center(grid_.dims(), 0);
-    for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
-      center[axis] = grid_.shape()[axis] / 2;
+  void configure_face_boundaries() {
+    const std::size_t dims = grid_.dims();
+    lower_faces_.assign(dims, FaceBoundary{});
+    upper_faces_.assign(dims, FaceBoundary{});
+
+    for (const auto& boundary : problem_.boundaries) {
+      if (boundary.axis >= dims) {
+        continue;
+      }
+      FaceBoundary face;
+      face.type = boundary.type;
+      face.parameter = parse_boundary_parameter_scalar(boundary.parameter, 0.0);
+      face.specified = true;
+
+      if (boundary.upper_face) {
+        upper_faces_[boundary.axis] = face;
+      } else {
+        lower_faces_[boundary.axis] = face;
+      }
     }
-    return grid_.flatten_index(center);
   }
 
-  std::vector<std::size_t> wrapped_neighbor(const std::vector<std::size_t>& index, std::size_t axis, int offset) const {
-    std::vector<std::size_t> result = index;
+  const FaceBoundary& face_boundary(std::size_t axis, bool upper) const {
+    return upper ? upper_faces_[axis] : lower_faces_[axis];
+  }
+
+  double boundary_ghost_value(
+      const FieldBuffer<double>& field,
+      const std::vector<std::size_t>& center,
+      std::size_t component,
+      std::size_t axis,
+      bool upper) const {
+    const FaceBoundary& face = face_boundary(axis, upper);
+    const double u0 = field.at_index(center, component);
+    const double h = grid_.spacing()[axis];
+
+    switch (face.type) {
+      case BoundaryType::Dirichlet:
+        return face.parameter;
+      case BoundaryType::Neumann:
+        return upper ? (u0 + face.parameter * h) : (u0 - face.parameter * h);
+      case BoundaryType::Robin:
+        return 2.0 * face.parameter - u0;
+      case BoundaryType::Periodic:
+        return u0;
+      case BoundaryType::Impedance: {
+        const double velocity = (current_.at_index(center, component) - previous_.at_index(center, component)) / dt_;
+        return u0 - face.parameter * dt_ * velocity;
+      }
+      case BoundaryType::PML: {
+        const double sigma = std::max(face.parameter, 0.0);
+        return std::exp(-sigma * dt_) * u0;
+      }
+    }
+    return u0;
+  }
+
+  double neighbor_value(
+      const FieldBuffer<double>& field,
+      const std::vector<std::size_t>& center,
+      std::size_t component,
+      std::size_t axis,
+      int delta) const {
     const std::size_t extent = grid_.shape()[axis];
-    const long long base = static_cast<long long>(index[axis]);
-    const long long shifted = (base + offset) % static_cast<long long>(extent);
-    result[axis] = static_cast<std::size_t>(shifted < 0 ? shifted + static_cast<long long>(extent) : shifted);
-    return result;
+    const int base = static_cast<int>(center[axis]);
+    int target = base + delta;
+
+    if (target >= 0 && target < static_cast<int>(extent)) {
+      auto index = center;
+      index[axis] = static_cast<std::size_t>(target);
+      return field.at_index(index, component);
+    }
+
+    const bool upper = target >= static_cast<int>(extent);
+    const FaceBoundary& face = face_boundary(axis, upper);
+    if (face.type == BoundaryType::Periodic) {
+      target %= static_cast<int>(extent);
+      if (target < 0) {
+        target += static_cast<int>(extent);
+      }
+      auto index = center;
+      index[axis] = static_cast<std::size_t>(target);
+      return field.at_index(index, component);
+    }
+
+    return boundary_ghost_value(field, center, component, axis, upper);
   }
 
   double laplacian_at(const FieldBuffer<double>& field, std::size_t flat, std::size_t component) const {
@@ -218,27 +298,21 @@ class RuntimeSolver final : public ISolver {
     for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
       const double h = grid_.spacing()[axis];
       const double inv_h2 = 1.0 / (h * h);
+      const bool can_use_4th = config_.spatial_order == 4 && grid_.shape()[axis] >= 5 && center[axis] >= 2 &&
+                               center[axis] + 2 < grid_.shape()[axis];
 
-      if (config_.spatial_order == 4 && grid_.shape()[axis] >= 5) {
-        const auto i_m2 = wrapped_neighbor(center, axis, -2);
-        const auto i_m1 = wrapped_neighbor(center, axis, -1);
-        const auto i_p1 = wrapped_neighbor(center, axis, +1);
-        const auto i_p2 = wrapped_neighbor(center, axis, +2);
-
-        const double u_m2 = field.at_index(i_m2, component);
-        const double u_m1 = field.at_index(i_m1, component);
-        const double u_p1 = field.at_index(i_p1, component);
-        const double u_p2 = field.at_index(i_p2, component);
-
+      if (can_use_4th) {
+        const double u_m2 = neighbor_value(field, center, component, axis, -2);
+        const double u_m1 = neighbor_value(field, center, component, axis, -1);
+        const double u_p1 = neighbor_value(field, center, component, axis, +1);
+        const double u_p2 = neighbor_value(field, center, component, axis, +2);
         lap += (-u_p2 + 16.0 * u_p1 - 30.0 * u0 + 16.0 * u_m1 - u_m2) * (inv_h2 / 12.0);
-      } else {
-        const auto i_m1 = wrapped_neighbor(center, axis, -1);
-        const auto i_p1 = wrapped_neighbor(center, axis, +1);
-
-        const double u_m1 = field.at_index(i_m1, component);
-        const double u_p1 = field.at_index(i_p1, component);
-        lap += (u_p1 - 2.0 * u0 + u_m1) * inv_h2;
+        continue;
       }
+
+      const double u_m1 = neighbor_value(field, center, component, axis, -1);
+      const double u_p1 = neighbor_value(field, center, component, axis, +1);
+      lap += (u_p1 - 2.0 * u0 + u_m1) * inv_h2;
     }
 
     return lap;
@@ -246,11 +320,8 @@ class RuntimeSolver final : public ISolver {
 
   double directional_gradient(const FieldBuffer<double>& field, std::size_t flat, std::size_t component, std::size_t axis) const {
     const std::vector<std::size_t> center = grid_.unravel_index(flat);
-    const auto i_m1 = wrapped_neighbor(center, axis, -1);
-    const auto i_p1 = wrapped_neighbor(center, axis, +1);
-
-    const double u_m1 = field.at_index(i_m1, component);
-    const double u_p1 = field.at_index(i_p1, component);
+    const double u_m1 = neighbor_value(field, center, component, axis, -1);
+    const double u_p1 = neighbor_value(field, center, component, axis, +1);
     return (u_p1 - u_m1) / (2.0 * grid_.spacing()[axis]);
   }
 
@@ -275,6 +346,27 @@ class RuntimeSolver final : public ISolver {
     }
 
     context.extra.emplace("component", static_cast<long double>(component));
+    return context;
+  }
+
+  EvaluationContext coefficient_context(std::size_t flat) const {
+    const std::vector<std::size_t> index = grid_.unravel_index(flat);
+
+    EvaluationContext context;
+    context.x.resize(grid_.dims(), 0.0L);
+    context.t = 0.0L;
+    context.u.resize(problem_.field_components, 0.0L);
+
+    for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
+      context.x[axis] = static_cast<long double>(grid_.origin()[axis] + index[axis] * grid_.spacing()[axis]);
+    }
+
+    for (std::size_t comp = 0; comp < problem_.field_components; ++comp) {
+      for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
+        context.derivatives.emplace("du" + std::to_string(comp) + "_dx" + std::to_string(axis), 0.0L);
+      }
+    }
+    context.extra.emplace("component", 0.0L);
     return context;
   }
 
@@ -351,6 +443,8 @@ class RuntimeSolver final : public ISolver {
   FieldBuffer<double> current_;
   FieldBuffer<double> next_;
   std::vector<double> pml_memory_;
+  std::vector<FaceBoundary> lower_faces_;
+  std::vector<FaceBoundary> upper_faces_;
 
   CompiledExpression density_expr_;
   CompiledExpression stiffness_expr_;

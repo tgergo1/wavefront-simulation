@@ -1,31 +1,38 @@
-# Validation Report Template
+# Validation Report
 
-This document defines reproducible validation gates used by CI.
+This project uses two validation layers:
 
-## Unit gates
+1. C++ test suite (`ctest`) for solver correctness, invariants, benchmarks, and API parity.
+2. Visualization-scenario gates in `/Users/gergely.toth/Work/wavefront-simulation/examples/generate_readme_gifs.py`, which fail GIF generation if physical checks are not met.
 
-- Parser determinism and bytecode stability
-- Symbol binding correctness (`x_i`, `t`, `u_j`, `duj_dxi`)
-- Boundary operator correctness on canonical fixtures
-- Solver factory interchangeability
+## CI/CTest Gates
 
-## Verification gates
+- Parser determinism, symbolic binding, and factory interchangeability.
+- Boundary/interface canonical checks.
+- Deterministic reproducibility and conservative drift checks.
+- Convergence trend checks.
+- Published-case benchmark scaffolds (Yee/Berenger/Virieux) and performance guardrail.
+- Exact-reference diagnostics finiteness.
 
-- Conservative linear energy drift bound (`< 5e-2` relative in default fixture)
-- Deterministic reproducibility for fixed configuration
-- Grid-refinement discrepancy reduction trend
+## Visualization Physics Gates
 
-## Benchmark gates
+The README GIF pipeline validates:
 
-- Yee-style CFL stability sanity
-- Berenger-style PML absorption sanity (`absorbed_energy > 0`)
-- Virieux-style bounded interface coefficient sanity
-- Performance guardrail threshold on baseline fixture
+- Mode separation: nonlinear/micro outputs must diverge from linear under identical setup.
+- Interface case: both reflected and transmitted waves must be nontrivial.
+- Boundary case: periodic right-strip energy must exceed PML right-strip energy at early and late checkpoints; PML absorbed energy must be nonzero.
+- Double-slit case: early far-right phantom energy must stay below threshold; near-wall slit transmission must dominate blocked transmission; far screen must show multiple fringes.
+- 3D volume case: axis isotropy spread in homogeneous medium must remain bounded; mid-frame active-voxel support must exceed minimum.
 
-## Precision cross-validation gate
+## Latest Metrics Artifact
 
-In `ExactReference`, `max_reference_error` must remain finite and non-negative.
+Latest generated metrics:
 
-## Notes
+- `/Users/gergely.toth/Work/wavefront-simulation/docs/assets/_checks/validation-metrics.json`
 
-Current benchmark set is an automated replication scaffold with quantitative CI checks and should be extended with domain-specific datasets when available.
+Regenerate and revalidate with:
+
+```bash
+PYTHONPATH=build/python python3 examples/generate_readme_gifs.py
+ctest --test-dir build --output-on-failure
+```

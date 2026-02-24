@@ -17,6 +17,7 @@ set(WAVEFRONT_TEST_SOURCES
     integration/test_mode_parity.cpp
     verification/test_invariants.cpp
     verification/test_convergence.cpp
+    verification/test_physical_validity.cpp
     benchmarks/test_published_cases.cpp
 )
 

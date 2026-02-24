@@ -1,0 +1,29 @@
+{
+  "boundary_comparison": {
+    "early_periodic_right_rms": 0.005877179647315727,
+    "early_pml_right_rms": 5.258902777379405e-25,
+    "late_periodic_right_rms": 0.014673915876698689,
+    "late_pml_right_rms": 0.004611034723423863,
+    "periodic_absorbed_energy": 0.0,
+    "pml_absorbed_energy": 1.22726
+  },
+  "double_slit": {
+    "early_far_right_rms": 1.9372365159492007e-49,
+    "screen_max_abs": 0.00033881782340119927,
+    "screen_peak_count": 7,
+    "slit_to_blocked_ratio": 2.7769820130371836
+  },
+  "interface_reflection": {
+    "reflected_rms": 0.01553559955999996,
+    "transmitted_rms": 0.01276591661706834
+  },
+  "modes_evolution": {
+    "linear_vs_micro_l2": 0.05390343317442829,
+    "linear_vs_nonlinear_l2": 0.001085145615286114
+  },
+  "volume_3d": {
+    "active_voxels_midframe": 13800,
+    "isotropy_spread": 2.2834884027783794e-15,
+    "scale": 0.001351914727203134
+  }
+}
