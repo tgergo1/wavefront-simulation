@@ -14,10 +14,15 @@ set(WAVEFRONT_TEST_SOURCES
     unit/test_parser.cpp
     unit/test_factory.cpp
     unit/test_boundary_interface.cpp
+    unit/test_dimensions.cpp
+    unit/test_barriers.cpp
     integration/test_mode_parity.cpp
     verification/test_invariants.cpp
     verification/test_convergence.cpp
     verification/test_physical_validity.cpp
+    verification/test_reflection_refraction.cpp
+    verification/test_multi_object.cpp
+    verification/test_boundary_conditions.cpp
     benchmarks/test_published_cases.cpp
 )
 
