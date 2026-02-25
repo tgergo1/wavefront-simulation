@@ -24,6 +24,7 @@ set(WAVEFRONT_TEST_SOURCES
     verification/test_multi_object.cpp
     verification/test_boundary_conditions.cpp
     benchmarks/test_published_cases.cpp
+    benchmarks/test_real_world_wave_data.cpp
 )
 
 add_executable(wavefront_tests ${WAVEFRONT_TEST_SOURCES})
