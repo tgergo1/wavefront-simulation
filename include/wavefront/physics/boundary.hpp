@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <vector>
 
 #include "wavefront/api/solver.hpp"
@@ -23,6 +24,8 @@ BoundaryMetrics apply_boundary_conditions(
     std::size_t component,
     bool split_pml,
     double dt,
-    double pml_sigma_default);
+    double pml_sigma_default,
+    std::size_t threads = 0,
+    bool deterministic = true);
 
 }  // namespace wavefront

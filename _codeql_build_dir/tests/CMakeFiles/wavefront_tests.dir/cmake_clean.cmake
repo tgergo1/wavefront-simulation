@@ -1,0 +1,42 @@
+file(REMOVE_RECURSE
+  "CMakeFiles/wavefront_tests.dir/link.d"
+  "CMakeFiles/wavefront_tests.dir/benchmarks/test_published_cases.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/benchmarks/test_published_cases.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/benchmarks/test_quantum_cases.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/benchmarks/test_quantum_cases.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/benchmarks/test_real_world_wave_data.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/benchmarks/test_real_world_wave_data.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/main.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/main.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/unit/test_barriers.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/unit/test_barriers.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/unit/test_boundary_interface.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/unit/test_boundary_interface.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/unit/test_dimensions.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/unit/test_dimensions.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/unit/test_factory.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/unit/test_factory.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/unit/test_parser.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/unit/test_parser.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/verification/test_boundary_conditions.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/verification/test_boundary_conditions.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/verification/test_multi_object.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/verification/test_multi_object.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/verification/test_physical_validity.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/verification/test_physical_validity.cpp.o.d"
+  "CMakeFiles/wavefront_tests.dir/verification/test_reflection_refraction.cpp.o"
+  "CMakeFiles/wavefront_tests.dir/verification/test_reflection_refraction.cpp.o.d"
+  "wavefront_tests"
+  "wavefront_tests.pdb"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang CXX)
+  include(CMakeFiles/wavefront_tests.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

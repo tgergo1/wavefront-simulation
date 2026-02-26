@@ -1,0 +1,1 @@
+/tmp/codeql-scratch-790dc98e7db6b275/dbs/cpp/working/autobuild/bin/c++ -fPIC -O3 -DNDEBUG -flto -Wl,--dependency-file=CMakeFiles/_wavefront.dir/link.d -shared  -o _wavefront.cpython-312-x86_64-linux-gnu.so CMakeFiles/_wavefront.dir/bindings.cpp.o  ../libwavefront.a
