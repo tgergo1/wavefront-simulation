@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "wavefront/api/solver.hpp"
+#include "wavefront/core/threading.hpp"
 
 namespace wavefront {
 
@@ -71,31 +72,38 @@ class SolverND {
   void set_micro_gradient_coefficient(Scalar value) { micro_grad_coeff_ = value; }
   void set_memory_attenuation(Scalar value) { memory_coeff_ = value; }
   void set_source_amplitude(Scalar value) { source_amplitude_ = value; }
+  void set_thread_count(std::size_t n) { thread_count_ = n; }
 
   void step() {
     const Scalar c2dt2 = wave_speed_ * wave_speed_ * dt_ * dt_;
 
-    for (std::size_t flat = 0; flat < total_points_; ++flat) {
-      for (std::size_t component = 0; component < components_; ++component) {
-        const std::size_t offset = flat * components_ + component;
-        const Scalar u = u_curr_[offset];
-        const Scalar lap = laplacian(flat, component);
+    deterministic_parallel_for(
+        total_points_,
+        thread_count_,
+        true,
+        [&](std::size_t begin, std::size_t end) {
+          for (std::size_t flat = begin; flat < end; ++flat) {
+            for (std::size_t component = 0; component < components_; ++component) {
+              const std::size_t offset = flat * components_ + component;
+              const Scalar u = u_curr_[offset];
+              const Scalar lap = laplacian(flat, component);
 
-        Scalar forcing = source_amplitude_ * std::sin(static_cast<Scalar>(steps_) * dt_);
+              Scalar forcing = source_amplitude_ * std::sin(static_cast<Scalar>(steps_) * dt_);
 
-        Scalar correction = Scalar{0};
-        if constexpr (Mode == SolverMode::NonlinearContinuum) {
-          correction += nonlinear_coeff_ * u * u * u;
-        }
-        if constexpr (Mode == SolverMode::MicroSurrogate) {
-          correction += micro_grad_coeff_ * lap;
-          const Scalar memory = (u_curr_[offset] - u_prev_[offset]) / dt_;
-          correction -= memory_coeff_ * memory;
-        }
+              Scalar correction = Scalar{0};
+              if constexpr (Mode == SolverMode::NonlinearContinuum) {
+                correction += nonlinear_coeff_ * u * u * u;
+              }
+              if constexpr (Mode == SolverMode::MicroSurrogate) {
+                correction += micro_grad_coeff_ * lap;
+                const Scalar memory = (u_curr_[offset] - u_prev_[offset]) / dt_;
+                correction -= memory_coeff_ * memory;
+              }
 
-        u_next_[offset] = Scalar{2} * u_curr_[offset] - u_prev_[offset] + c2dt2 * lap + dt_ * dt_ * (forcing + correction);
-      }
-    }
+              u_next_[offset] = Scalar{2} * u_curr_[offset] - u_prev_[offset] + c2dt2 * lap + dt_ * dt_ * (forcing + correction);
+            }
+          }
+        });
 
     u_prev_.swap(u_curr_);
     u_curr_.swap(u_next_);
@@ -184,6 +192,7 @@ class SolverND {
   std::size_t components_ = 1;
   std::size_t total_points_ = 0;
   std::size_t steps_ = 0;
+  std::size_t thread_count_ = 0;
 
   Scalar wave_speed_ = Scalar{1};
   Scalar dt_ = Scalar{0.01};

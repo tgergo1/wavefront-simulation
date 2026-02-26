@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -93,11 +94,23 @@ class RuntimeSolver final : public ISolver {
     source_expr_ = compile_or_default(problem_.source_term, "0.0");
 
     double max_speed = 0.0;
-    for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
-      const EvaluationContext context = coefficient_context(flat);
-      const double density = positive_or_floor(density_expr_.evaluate_double(context), 1.0e-12);
-      const double stiffness = positive_or_floor(stiffness_expr_.evaluate_double(context), 1.0e-12);
-      max_speed = std::max(max_speed, phase_velocity(stiffness, density));
+    {
+      std::mutex mtx;
+      deterministic_parallel_for(
+          grid_.total_points(),
+          config_.threads,
+          config_.deterministic,
+          [&](std::size_t begin, std::size_t end) {
+            double local_max = 0.0;
+            for (std::size_t flat = begin; flat < end; ++flat) {
+              const EvaluationContext context = coefficient_context(flat);
+              const double density = positive_or_floor(density_expr_.evaluate_double(context), 1.0e-12);
+              const double stiffness = positive_or_floor(stiffness_expr_.evaluate_double(context), 1.0e-12);
+              local_max = std::max(local_max, phase_velocity(stiffness, density));
+            }
+            std::lock_guard<std::mutex> lock(mtx);
+            max_speed = std::max(max_speed, local_max);
+          });
     }
     max_speed = positive_or_floor(max_speed, 1.0e-12);
     dt_ = (config_.cfl * grid_.min_spacing()) / (max_speed * std::sqrt(static_cast<double>(grid_.dims())));
@@ -141,7 +154,9 @@ class RuntimeSolver final : public ISolver {
           component,
           config_.split_pml,
           dt_,
-          8.0 / (grid_.min_spacing() * static_cast<double>(grid_.dims())));
+          8.0 / (grid_.min_spacing() * static_cast<double>(grid_.dims())),
+          config_.threads,
+          config_.deterministic);
       total_reflected_energy_ += metrics.reflected_energy;
       total_absorbed_energy_ += metrics.absorbed_energy;
     }
@@ -425,13 +440,23 @@ class RuntimeSolver final : public ISolver {
 
   double compute_energy() const {
     double energy = 0.0;
-    for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
-      for (std::size_t component = 0; component < problem_.field_components; ++component) {
-        const double u = current_.at_flat(flat, component);
-        const double velocity = (current_.at_flat(flat, component) - previous_.at_flat(flat, component)) / dt_;
-        energy += 0.5 * (u * u + velocity * velocity);
-      }
-    }
+    std::mutex mtx;
+    deterministic_parallel_for(
+        grid_.total_points(),
+        config_.threads,
+        config_.deterministic,
+        [&](std::size_t begin, std::size_t end) {
+          double local_energy = 0.0;
+          for (std::size_t flat = begin; flat < end; ++flat) {
+            for (std::size_t component = 0; component < problem_.field_components; ++component) {
+              const double u = current_.at_flat(flat, component);
+              const double velocity = (u - previous_.at_flat(flat, component)) / dt_;
+              local_energy += 0.5 * (u * u + velocity * velocity);
+            }
+          }
+          std::lock_guard<std::mutex> lock(mtx);
+          energy += local_energy;
+        });
     return energy;
   }
 
