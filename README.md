@@ -38,6 +38,22 @@ Full 3D simulation rendered as a perspective volume (not slice planes), with a r
 
 ![3d wave volume](docs/assets/wavefield-3d-volume.gif)
 
+### 6) 4D Wavefield (Hyperslice Grid)
+
+A 4-D acoustic wave launched from a point source at the centre of [0,1]⁴.  
+Because wave fronts in 4-D expand as a 3-sphere (the surface of a 4-ball),
+each 2-D cross-section at a fixed *(x₂, x₃)* position shows a circular arc
+whose radius depends on the slice distance from the source.
+
+The 3 × 3 grid visualises this directly:
+- **rows** → three x₂ levels: ¼, ½, ¾ of the domain (stripe colour encodes the level)
+- **columns** → three x₃ levels: ¼, ½, ¾ of the domain
+- The **centre panel** (x₂ = ½, x₃ = ½) cuts through the equator of the
+  3-sphere and shows the largest wavefront ring; corner panels reveal
+  progressively smaller cross-sections, exposing the 4-D geometry.
+
+![4D hyperslice grid](docs/assets/wavefield-4d-hyperslice.gif)
+
 Regenerate all GIFs with:
 
 ```bash
