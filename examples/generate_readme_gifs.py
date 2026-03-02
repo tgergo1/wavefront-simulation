@@ -36,6 +36,7 @@ RGB = Tuple[int, int, int]
 Field2D = List[List[float]]
 Overlay2D = List[List[int]]
 Volume3D = List[List[List[float]]]
+HypersliceGrid = List[List[Field2D]]  # [row][col] -> Field2D for 4D visualisation
 
 
 @dataclass
@@ -207,6 +208,43 @@ def make_problem_3d(
     return p
 
 
+def make_problem_4d(
+    n: int,
+    stiffness_expr: str,
+    source_expr: str,
+    damping_expr: str,
+    boundaries: Sequence["wf.BoundarySpec"],
+) -> "wf.ProblemSpec":
+    p = wf.ProblemSpec()
+    p.grid = wf.GridSpec()
+    p.grid.dims = 4
+    p.grid.shape = [n, n, n, n]
+    h = 1.0 / max(1, n - 1)
+    p.grid.spacing = [h, h, h, h]
+    p.grid.origin = [0.0, 0.0, 0.0, 0.0]
+    p.field_components = 1
+
+    p.medium = wf.MediumLaw()
+    p.medium.density = wf.SymbolicExpr("1.0")
+    p.medium.stiffness = wf.SymbolicExpr(stiffness_expr)
+    p.medium.damping = wf.SymbolicExpr(damping_expr)
+    p.medium.dispersion = wf.SymbolicExpr("0.0")
+    p.source_term = wf.SymbolicExpr(source_expr)
+    p.boundaries = list(boundaries)
+    return p
+
+
+def sample_slice_4d(solver: "wf.Solver", n: int, x2_idx: int, x3_idx: int) -> Field2D:
+    """Sample a 2-D (x0, x1) cross-section from a 4-D field at fixed x2_idx, x3_idx."""
+    field: Field2D = []
+    for i1 in range(n):
+        row: List[float] = []
+        for i0 in range(n):
+            row.append(float(solver.sample([i0, i1, x2_idx, x3_idx])[0]))
+        field.append(row)
+    return field
+
+
 def sample_field(solver: "wf.Solver", nx: int, ny: int) -> Field2D:
     field: Field2D = []
     for y in range(ny):
@@ -282,6 +320,121 @@ def max_abs_in_volumes(volumes: Sequence[Volume3D]) -> float:
                     if av > m:
                         m = av
     return max(m, 1.0e-12)
+
+
+def max_abs_in_hyperslice_frames(all_frames: Sequence[HypersliceGrid]) -> float:
+    m = 0.0
+    for grid in all_frames:
+        for row_panels in grid:
+            for panel in row_panels:
+                for row in panel:
+                    for v in row:
+                        av = abs(v)
+                        if av > m:
+                            m = av
+    return max(m, 1.0e-12)
+
+
+def render_hyperslice_grid_frame(
+    grid_panels: HypersliceGrid,
+    scale: float,
+    cell: int = 5,
+    panel_gap: int = 5,
+    margin: int = 14,
+    stripe_h: int = 5,
+    legend_h: int = 10,
+    legend_margin: int = 8,
+) -> Tuple[int, int, List[bytearray]]:
+    """Render a 3×3 hyperslice grid for a 4-D wavefield.
+
+    Each row of panels corresponds to a fixed x2 position (top=1/4, mid=1/2,
+    bot=3/4); each column to a fixed x3 position (left=1/4, mid=1/2, right=3/4).
+    The stripe colour on top of each row encodes the x2 level.
+    """
+    n_rows = len(grid_panels)
+    n_cols = len(grid_panels[0])
+    ny = len(grid_panels[0][0])
+    nx = len(grid_panels[0][0][0])
+
+    panel_w = nx * cell
+    panel_h = ny * cell
+
+    width = margin * 2 + n_cols * panel_w + (n_cols - 1) * panel_gap
+    height = (
+        margin * 2
+        + n_rows * (stripe_h + panel_h)
+        + (n_rows - 1) * panel_gap
+        + legend_margin
+        + legend_h
+    )
+
+    bg = (245, 248, 255)
+    rows_out: List[bytearray] = [bytearray([bg[0], bg[1], bg[2]] * width) for _ in range(height)]
+
+    def fill_rect(x: int, y: int, w: int, h: int, c: RGB) -> None:
+        for yy in range(max(0, y), min(height, y + h)):
+            row = rows_out[yy]
+            for xx in range(max(0, x), min(width, x + w)):
+                i = xx * 3
+                row[i] = c[0]
+                row[i + 1] = c[1]
+                row[i + 2] = c[2]
+
+    # Stripe colours indicate the x2 level for each row.
+    row_stripe_colors: List[RGB] = [
+        (21, 82, 161),   # top row: x2 = n/4 (near lower edge)
+        (56, 131, 84),   # mid row: x2 = n/2 (center slice)
+        (177, 82, 27),   # bot row: x2 = 3n/4 (near upper edge)
+    ]
+
+    cell_h = stripe_h + panel_h
+
+    for row_idx in range(n_rows):
+        for col_idx in range(n_cols):
+            panel = grid_panels[row_idx][col_idx]
+            px = margin + col_idx * (panel_w + panel_gap)
+            py = margin + row_idx * (cell_h + panel_gap)
+
+            stripe_color = row_stripe_colors[row_idx % len(row_stripe_colors)]
+            fill_rect(px, py, panel_w, stripe_h, stripe_color)
+
+            for j in range(ny):
+                src_row = panel[ny - 1 - j]
+                for i in range(nx):
+                    color = color_for(math.tanh(1.8 * src_row[i] / scale))
+                    fill_rect(px + i * cell, py + stripe_h + j * cell, cell, cell, color)
+
+    legend_w = min(300, width - 2 * margin)
+    legend_x = (width - legend_w) // 2
+    legend_y = height - margin - legend_h
+    for i in range(legend_w):
+        n_val = -1.0 + 2.0 * (i / max(1, legend_w - 1))
+        fill_rect(legend_x + i, legend_y, 1, legend_h, color_for(n_val))
+
+    return width, height, rows_out
+
+
+def generate_gif_hyperslice_grid(
+    name: str,
+    all_frames: Sequence[HypersliceGrid],
+    fps: int,
+    cell: int = 5,
+) -> Path:
+    output = ASSETS / name
+    ASSETS.mkdir(parents=True, exist_ok=True)
+
+    scale = max_abs_in_hyperslice_frames(all_frames)
+
+    with tempfile.TemporaryDirectory(prefix="wavefront_4d_gif_") as tmp:
+        tmp_path = Path(tmp)
+        for idx, grid in enumerate(all_frames):
+            width, height, rows = render_hyperslice_grid_frame(grid, scale, cell=cell)
+            frame_path = tmp_path / f"frame_{idx:04d}.png"
+            write_png_rgb(frame_path, width, height, rows)
+
+        encode_gif_from_frames(tmp_path, fps=fps, output=output)
+
+    return output
 
 
 def rms_region(field: Field2D, x0: int, x1: int, y0: int, y1: int) -> float:
@@ -1074,6 +1227,106 @@ def scenario_3d_volume() -> Path:
     return output
 
 
+def scenario_4d_hyperslice() -> Path:
+    """4-D wave simulation rendered as a 3×3 hyperslice grid.
+
+    A point-like Gaussian pulse is placed at the centre of a unit 4-cube
+    [0,1]^4.  Because a wave front in 4-D expands as a 3-sphere (the surface
+    of a 4-ball), each 2-D cross-section at a fixed (x2, x3) position shows a
+    *circular* arc whose radius depends on how far the slice is from the
+    4-D source.  The 3×3 grid encodes:
+      rows  – three x2 levels (1/4, 1/2, 3/4)
+      cols  – three x3 levels (1/4, 1/2, 3/4)
+    The centre panel (x2=1/2, x3=1/2) cuts through the equator of the
+    3-sphere and shows the largest ring; corner panels reveal progressively
+    smaller cross-sections, directly visualising the 4-D geometry.
+    """
+    n = 20
+    frames = 64
+    steps_per_frame = 5
+
+    r4sq = (
+        "(x_0-0.5)*(x_0-0.5)"
+        "+(x_1-0.5)*(x_1-0.5)"
+        "+(x_2-0.5)*(x_2-0.5)"
+        "+(x_3-0.5)*(x_3-0.5)"
+    )
+    problem = make_problem_4d(
+        n,
+        stiffness_expr="1.0",
+        source_expr=f"26.0*sin(24*t)*exp(-12*t)*exp(-({r4sq})/0.005)",
+        damping_expr="0.0001",
+        boundaries=pml_boundaries_nd(4, "10.0"),
+    )
+
+    solver = wf.Solver(problem, make_config(wf.SolverMode.LinearApprox))
+    solver.run(50)
+
+    # Sample at quarter, centre, three-quarter along x2 and x3.
+    slice_positions = [n // 4, n // 2, 3 * n // 4]
+
+    all_frames: List[HypersliceGrid] = []
+    for _ in range(frames):
+        solver.run(steps_per_frame)
+        grid: HypersliceGrid = []
+        for x2_idx in slice_positions:
+            row_panels: List[Field2D] = []
+            for x3_idx in slice_positions:
+                row_panels.append(sample_slice_4d(solver, n, x2_idx, x3_idx))
+            grid.append(row_panels)
+        all_frames.append(grid)
+
+    # Validation: centre panel should carry the dominant amplitude.
+    mid_grid = all_frames[len(all_frames) // 2]
+    center_panel = mid_grid[1][1]  # x2=n/2, x3=n/2
+    corner_panel = mid_grid[0][0]  # x2=n/4, x3=n/4
+
+    center_peak = max(abs(v) for row in center_panel for v in row)
+    corner_peak = max(abs(v) for row in corner_panel for v in row)
+
+    if center_peak < 1.0e-4:
+        raise RuntimeError(
+            f"4D demo invalid: centre panel peak amplitude too small ({center_peak:.3e})."
+        )
+    if center_peak < corner_peak:
+        raise RuntimeError(
+            f"4D demo invalid: centre panel ({center_peak:.3e}) not stronger than corner ({corner_peak:.3e})."
+        )
+
+    # Isotropy in the central (x2, x3) = (n/2, n/2) slice along all four
+    # in-plane axes at a fixed radius.
+    c = n // 2
+    r = max(2, n // 5)
+    axis_vals = [
+        abs(center_panel[c][c + r]),
+        abs(center_panel[c][c - r]),
+        abs(center_panel[c + r][c]),
+        abs(center_panel[c - r][c]),
+    ]
+    ax_max = max(axis_vals)
+    ax_min = min(axis_vals)
+    isotropy_spread_4d = (ax_max - ax_min) / max(ax_max, 1.0e-12)
+
+    if isotropy_spread_4d > 0.45:
+        raise RuntimeError(
+            f"4D demo invalid: in-plane isotropy spread too high ({isotropy_spread_4d:.3f})."
+        )
+
+    VALIDATION_SUMMARY["hyperslice_4d"] = {
+        "center_panel_peak": center_peak,
+        "corner_panel_peak": corner_peak,
+        "center_to_corner_ratio": center_peak / max(corner_peak, 1.0e-12),
+        "isotropy_spread_4d": isotropy_spread_4d,
+    }
+
+    return generate_gif_hyperslice_grid(
+        "wavefield-4d-hyperslice.gif",
+        all_frames=all_frames,
+        fps=12,
+        cell=5,
+    )
+
+
 def require_ffmpeg() -> None:
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("ffmpeg is required to build GIFs; please install it and retry.")
@@ -1090,6 +1343,7 @@ def main() -> None:
         scenario_boundary_comparison(),
         scenario_double_slit(),
         scenario_3d_volume(),
+        scenario_4d_hyperslice(),
     ]
 
     metrics_path = CHECKS_DIR / "validation-metrics.json"
