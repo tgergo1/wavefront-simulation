@@ -161,7 +161,6 @@ int function_arity(std::string_view name) {
     return 1;
   }
   throw std::invalid_argument("Unknown function: " + std::string(name));  // GCOVR_EXCL_LINE
-  return it->second;
 }
 
 std::vector<Token> to_rpn(const std::vector<Token>& input) {
