@@ -1327,6 +1327,148 @@ def scenario_4d_hyperslice() -> Path:
     )
 
 
+def scenario_longitudinal_wave() -> Path:
+    """Longitudinal (compressional / P-wave) simulation.
+
+    A 2-component vector displacement field is driven by a localised Gaussian
+    source.  The grad-div spatial operator couples the x- and y-displacement
+    components, producing radially expanding compression/rarefaction rings.
+
+    Left panel : divergence of the displacement field  (∇·u)  showing
+                 compression (red) and rarefaction (blue) bands.
+    Right panel: transverse scalar wave with the same source for comparison.
+    """
+    nx = 48
+    ny = 48
+    frames = 72
+    steps_per_frame = 6
+
+    source_expr = (
+        "16.0*sin(28*t)*exp(-16*t)*exp(-((x_0-0.50)*(x_0-0.50)"
+        "+(x_1-0.50)*(x_1-0.50))/0.012)"
+    )
+
+    # Longitudinal problem: 2-component vector field with grad-div coupling
+    p_long = wf.ProblemSpec()
+    p_long.grid = wf.GridSpec()
+    p_long.grid.dims = 2
+    p_long.grid.shape = [nx, ny]
+    p_long.grid.spacing = [1.0 / max(1, nx - 1), 1.0 / max(1, ny - 1)]
+    p_long.grid.origin = [0.0, 0.0]
+    p_long.field_components = 2
+    p_long.wave_type = wf.WaveType.Longitudinal
+    p_long.medium = wf.MediumLaw()
+    p_long.medium.density = wf.SymbolicExpr("1.0")
+    p_long.medium.stiffness = wf.SymbolicExpr("1.3")
+    p_long.medium.damping = wf.SymbolicExpr("0.0004")
+    p_long.medium.dispersion = wf.SymbolicExpr("0.0")
+    p_long.source_term = wf.SymbolicExpr(source_expr)
+    p_long.boundaries = pml_boundaries("12.0")
+
+    # Transverse comparison: scalar field with same source/medium
+    p_trans = make_problem(
+        nx, ny,
+        density_expr="1.0",
+        stiffness_expr="1.3",
+        source_expr=source_expr,
+        damping_expr="0.0004",
+        dispersion_expr="0.0",
+        boundaries=pml_boundaries("12.0"),
+    )
+
+    solver_long = wf.Solver(p_long, make_config(wf.SolverMode.LinearApprox))
+    solver_trans = wf.Solver(p_trans, make_config(wf.SolverMode.LinearApprox))
+
+    # Warm-up
+    solver_long.run(80)
+    solver_trans.run(80)
+
+    dx = 1.0 / max(1, nx - 1)
+    dy = 1.0 / max(1, ny - 1)
+
+    def sample_divergence(solver: "wf.Solver") -> Field2D:
+        """Compute ∇·u = ∂u_x/∂x + ∂u_y/∂y via central differences."""
+        # Sample both displacement components on the full grid.
+        ux: List[List[float]] = []
+        uy: List[List[float]] = []
+        for j in range(ny):
+            row_x: List[float] = []
+            row_y: List[float] = []
+            for i in range(nx):
+                vals = solver.sample([i, j])
+                row_x.append(float(vals[0]))
+                row_y.append(float(vals[1]))
+            ux.append(row_x)
+            uy.append(row_y)
+
+        div: Field2D = []
+        for j in range(ny):
+            row: List[float] = []
+            for i in range(nx):
+                # ∂u_x / ∂x  (central)
+                if 0 < i < nx - 1:
+                    dux_dx = (ux[j][i + 1] - ux[j][i - 1]) / (2.0 * dx)
+                elif i == 0:
+                    dux_dx = (ux[j][1] - ux[j][0]) / dx
+                else:
+                    dux_dx = (ux[j][-1] - ux[j][-2]) / dx
+
+                # ∂u_y / ∂y  (central)
+                if 0 < j < ny - 1:
+                    duy_dy = (uy[j + 1][i] - uy[j - 1][i]) / (2.0 * dy)
+                elif j == 0:
+                    duy_dy = (uy[1][i] - uy[0][i]) / dy
+                else:
+                    duy_dy = (uy[-1][i] - uy[-2][i]) / dy
+
+                row.append(dux_dx + duy_dy)
+            div.append(row)
+        return div
+
+    frames_data: List[List[Field2D]] = []
+    for _ in range(frames):
+        solver_long.run(steps_per_frame)
+        solver_trans.run(steps_per_frame)
+        divergence_panel = sample_divergence(solver_long)
+        transverse_panel = sample_field(solver_trans, nx, ny)
+        frames_data.append([divergence_panel, transverse_panel])
+
+    # Validation: divergence field should carry visible structure.
+    final_div = frames_data[-1][0]
+    final_trans = frames_data[-1][1]
+    div_rms = math.sqrt(
+        sum(v * v for row in final_div for v in row) / max(1, nx * ny)
+    )
+    trans_rms = math.sqrt(
+        sum(v * v for row in final_trans for v in row) / max(1, nx * ny)
+    )
+    diff_l2 = l2_difference(final_div, final_trans)
+
+    if div_rms < 1.0e-6:
+        raise RuntimeError(
+            f"Longitudinal demo invalid: divergence field RMS too small ({div_rms:.3e})."
+        )
+    if diff_l2 < 1.0e-6:
+        raise RuntimeError(
+            f"Longitudinal demo invalid: divergence indistinguishable from transverse "
+            f"(l2 diff = {diff_l2:.3e})."
+        )
+
+    VALIDATION_SUMMARY["longitudinal_wave"] = {
+        "divergence_rms": div_rms,
+        "transverse_rms": trans_rms,
+        "longitudinal_vs_transverse_l2": diff_l2,
+    }
+
+    return generate_gif(
+        "wavefield-longitudinal.gif",
+        frame_panels=frames_data,
+        fps=12,
+        layout=Layout(cell=5),
+        stripe_colors=[(42, 118, 162), (162, 72, 42)],
+    )
+
+
 def require_ffmpeg() -> None:
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("ffmpeg is required to build GIFs; please install it and retry.")
@@ -1342,6 +1484,7 @@ def main() -> None:
         scenario_interface_reflection(),
         scenario_boundary_comparison(),
         scenario_double_slit(),
+        scenario_longitudinal_wave(),
         scenario_3d_volume(),
         scenario_4d_hyperslice(),
     ]
