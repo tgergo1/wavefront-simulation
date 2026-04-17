@@ -1,2 +1,0 @@
-/usr/bin/ar qc libwavefront.a CMakeFiles/wavefront.dir/src/api/problem_validation.cpp.o CMakeFiles/wavefront.dir/src/api/solver_factory.cpp.o CMakeFiles/wavefront.dir/src/core/runtime_solver.cpp.o CMakeFiles/wavefront.dir/src/physics/boundary.cpp.o CMakeFiles/wavefront.dir/src/physics/interface.cpp.o CMakeFiles/wavefront.dir/src/symbolic/expression.cpp.o CMakeFiles/wavefront.dir/src/exact/exact_number.cpp.o
-/usr/bin/ranlib libwavefront.a

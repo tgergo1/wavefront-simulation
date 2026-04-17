@@ -205,3 +205,46 @@ TEST_CASE("expression: comma outside function call throws") {
 TEST_CASE("expression: unbalanced expression throws") {
   CHECK_THROWS_AS(wavefront::CompiledExpression::compile("1 2"), std::invalid_argument);
 }
+
+TEST_CASE("expression: invalid number literal with trailing 'e' throws") {
+  // A bare "." is tokenized as a number but from_chars cannot parse it
+  CHECK_THROWS_AS(wavefront::CompiledExpression::compile("."), std::invalid_argument);
+}
+
+TEST_CASE("expression: pow binary function") {
+  wavefront::EvaluationContext ctx;
+  const auto expr = wavefront::CompiledExpression::compile("pow(2, 3)");
+  CHECK(expr.evaluate_double(ctx) == doctest::Approx(8.0));
+}
+
+TEST_CASE("expression: max binary function") {
+  wavefront::EvaluationContext ctx;
+  const auto expr = wavefront::CompiledExpression::compile("max(3, 7)");
+  CHECK(expr.evaluate_double(ctx) == doctest::Approx(7.0));
+}
+
+TEST_CASE("expression: derivatives context variable resolution") {
+  const auto expr = wavefront::CompiledExpression::compile("du0_dx0 + 1");
+  wavefront::EvaluationContext ctx;
+  ctx.derivatives["du0_dx0"] = 5.0L;
+  CHECK(expr.evaluate_double(ctx) == doctest::Approx(6.0));
+}
+
+TEST_CASE("expression: u_ prefix variable resolution") {
+  const auto expr = wavefront::CompiledExpression::compile("u_0 + 1");
+  wavefront::EvaluationContext ctx;
+  ctx.u = {7.0L};
+  CHECK(expr.evaluate_double(ctx) == doctest::Approx(8.0));
+}
+
+TEST_CASE("expression: time variable t") {
+  const auto expr = wavefront::CompiledExpression::compile("t + 1");
+  wavefront::EvaluationContext ctx;
+  ctx.t = 2.0L;
+  CHECK(expr.evaluate_double(ctx) == doctest::Approx(3.0));
+}
+
+TEST_CASE("expression: canonical_form returns non-empty string") {
+  const auto expr = wavefront::CompiledExpression::compile("sin(x_0) + 1");
+  CHECK(!expr.canonical_form().empty());
+}

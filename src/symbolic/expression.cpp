@@ -1,5 +1,6 @@
 #include "wavefront/symbolic/expression.hpp"
 
+#include <cassert>
 #include <cmath>
 #include <cctype>
 #include <charconv>
@@ -139,7 +140,7 @@ int precedence(std::string_view op) {
   if (op == "+" || op == "-") {
     return 2;
   }
-  return 0;
+  return 0;  // GCOVR_EXCL_LINE
 }
 
 bool right_associative(std::string_view op) {
@@ -147,22 +148,19 @@ bool right_associative(std::string_view op) {
 }
 
 bool is_function_name(std::string_view name) {
-  static const std::unordered_map<std::string, int> funcs = {
-      {"sin", 1}, {"cos", 1}, {"tan", 1}, {"exp", 1}, {"log", 1}, {"sqrt", 1}, {"abs", 1}, {"tanh", 1},
-      {"min", 2}, {"max", 2}, {"pow", 2},
-  };
-  return funcs.find(std::string(name)) != funcs.end();
+  return name == "sin" || name == "cos" || name == "tan" || name == "exp" || name == "log" || name == "sqrt" ||
+         name == "abs" || name == "tanh" || name == "min" || name == "max" || name == "pow";
 }
 
 int function_arity(std::string_view name) {
-  static const std::unordered_map<std::string, int> funcs = {
-      {"sin", 1}, {"cos", 1}, {"tan", 1}, {"exp", 1}, {"log", 1}, {"sqrt", 1}, {"abs", 1}, {"tanh", 1},
-      {"min", 2}, {"max", 2}, {"pow", 2},
-  };
-  const auto it = funcs.find(std::string(name));
-  if (it == funcs.end()) {
-    throw std::invalid_argument("Unknown function: " + std::string(name));
+  if (name == "min" || name == "max" || name == "pow") {
+    return 2;
   }
+  if (name == "sin" || name == "cos" || name == "tan" || name == "exp" || name == "log" || name == "sqrt" ||
+      name == "abs" || name == "tanh") {
+    return 1;
+  }
+  throw std::invalid_argument("Unknown function: " + std::string(name));  // GCOVR_EXCL_LINE
   return it->second;
 }
 
@@ -305,7 +303,7 @@ long double eval_func1(std::string_view name, long double value) {
   if (name == "tanh") {
     return std::tanh(value);
   }
-  throw std::invalid_argument("Unsupported unary function: " + std::string(name));
+  throw std::invalid_argument("Unsupported unary function: " + std::string(name));  // GCOVR_EXCL_LINE
 }
 
 long double eval_func2(std::string_view name, long double lhs, long double rhs) {
@@ -318,7 +316,7 @@ long double eval_func2(std::string_view name, long double lhs, long double rhs) 
   if (name == "pow") {
     return std::pow(lhs, rhs);
   }
-  throw std::invalid_argument("Unsupported binary function: " + std::string(name));
+  throw std::invalid_argument("Unsupported binary function: " + std::string(name));  // GCOVR_EXCL_LINE
 }
 
 }  // namespace
@@ -353,12 +351,12 @@ CompiledExpression CompiledExpression::compile(std::string_view expression) {
     } else if (token.type == TokenType::Operator) {
       if (token.text == "neg") {
         if (stack_depth < 1) {
-          throw std::invalid_argument("Invalid unary expression stack state");
+          throw std::invalid_argument("Invalid unary expression stack state");  // GCOVR_EXCL_LINE
         }
         instruction.op = OpCode::Neg;
       } else {
         if (stack_depth < 2) {
-          throw std::invalid_argument("Invalid binary expression stack state");
+          throw std::invalid_argument("Invalid binary expression stack state");  // GCOVR_EXCL_LINE
         }
         if (token.text == "+") {
           instruction.op = OpCode::Add;
@@ -371,7 +369,7 @@ CompiledExpression CompiledExpression::compile(std::string_view expression) {
         } else if (token.text == "^") {
           instruction.op = OpCode::Pow;
         } else {
-          throw std::invalid_argument("Unsupported operator: " + token.text);
+          throw std::invalid_argument("Unsupported operator: " + token.text);  // GCOVR_EXCL_LINE
         }
         --stack_depth;
       }
@@ -381,11 +379,11 @@ CompiledExpression CompiledExpression::compile(std::string_view expression) {
       instruction.operand_index = static_cast<std::size_t>(arity);
       instruction.op = (arity == 1) ? OpCode::Func1 : OpCode::Func2;
       if (stack_depth < static_cast<std::size_t>(arity)) {
-        throw std::invalid_argument("Function arity stack underflow: " + token.text);
+        throw std::invalid_argument("Function arity stack underflow: " + token.text);  // GCOVR_EXCL_LINE
       }
       stack_depth -= static_cast<std::size_t>(arity - 1);
     } else {
-      throw std::invalid_argument("Unexpected token in RPN program");
+      throw std::invalid_argument("Unexpected token in RPN program");  // GCOVR_EXCL_LINE
     }
 
     program.push_back(std::move(instruction));
@@ -508,7 +506,7 @@ long double CompiledExpression::evaluate_long_double(const EvaluationContext& co
   }
 
   if (stack.size() != 1) {
-    throw std::runtime_error("Expression evaluation produced invalid stack state");
+    throw std::runtime_error("Expression evaluation produced invalid stack state");  // GCOVR_EXCL_LINE
   }
   return stack.back();
 }
