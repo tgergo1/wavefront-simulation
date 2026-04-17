@@ -1,4 +1,5 @@
 /build/
+/build_cov/
 /.cache/
 /.venv/
 /_codeql_build_dir/
