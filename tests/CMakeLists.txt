@@ -16,6 +16,10 @@ set(WAVEFRONT_TEST_SOURCES
     unit/test_boundary_interface.cpp
     unit/test_dimensions.cpp
     unit/test_barriers.cpp
+    unit/test_validation.cpp
+    unit/test_expression_coverage.cpp
+    unit/test_exact_number.cpp
+    unit/test_coverage_gaps.cpp
     integration/test_mode_parity.cpp
     verification/test_invariants.cpp
     verification/test_convergence.cpp

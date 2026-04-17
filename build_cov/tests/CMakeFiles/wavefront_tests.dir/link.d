@@ -8,6 +8,10 @@ wavefront_tests: \
   CMakeFiles/wavefront_tests.dir/unit/test_boundary_interface.cpp.o \
   CMakeFiles/wavefront_tests.dir/unit/test_dimensions.cpp.o \
   CMakeFiles/wavefront_tests.dir/unit/test_barriers.cpp.o \
+  CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.o \
+  CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.o \
+  CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.o \
+  CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.o \
   CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o \
   CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o \
   CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o \
@@ -64,6 +68,14 @@ CMakeFiles/wavefront_tests.dir/unit/test_boundary_interface.cpp.o:
 CMakeFiles/wavefront_tests.dir/unit/test_dimensions.cpp.o:
 
 CMakeFiles/wavefront_tests.dir/unit/test_barriers.cpp.o:
+
+CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.o:
+
+CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.o:
+
+CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.o:
+
+CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.o:
 
 CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o:
 

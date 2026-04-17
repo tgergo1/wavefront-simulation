@@ -353,6 +353,30 @@ unit/test_boundary_interface.cpp.s:
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_boundary_interface.cpp.s
 .PHONY : unit/test_boundary_interface.cpp.s
 
+unit/test_coverage_gaps.o: unit/test_coverage_gaps.cpp.o
+.PHONY : unit/test_coverage_gaps.o
+
+# target to build an object file
+unit/test_coverage_gaps.cpp.o:
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.o
+.PHONY : unit/test_coverage_gaps.cpp.o
+
+unit/test_coverage_gaps.i: unit/test_coverage_gaps.cpp.i
+.PHONY : unit/test_coverage_gaps.i
+
+# target to preprocess a source file
+unit/test_coverage_gaps.cpp.i:
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.i
+.PHONY : unit/test_coverage_gaps.cpp.i
+
+unit/test_coverage_gaps.s: unit/test_coverage_gaps.cpp.s
+.PHONY : unit/test_coverage_gaps.s
+
+# target to generate assembly for a file
+unit/test_coverage_gaps.cpp.s:
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.s
+.PHONY : unit/test_coverage_gaps.cpp.s
+
 unit/test_dimensions.o: unit/test_dimensions.cpp.o
 .PHONY : unit/test_dimensions.o
 
@@ -376,6 +400,54 @@ unit/test_dimensions.s: unit/test_dimensions.cpp.s
 unit/test_dimensions.cpp.s:
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_dimensions.cpp.s
 .PHONY : unit/test_dimensions.cpp.s
+
+unit/test_exact_number.o: unit/test_exact_number.cpp.o
+.PHONY : unit/test_exact_number.o
+
+# target to build an object file
+unit/test_exact_number.cpp.o:
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.o
+.PHONY : unit/test_exact_number.cpp.o
+
+unit/test_exact_number.i: unit/test_exact_number.cpp.i
+.PHONY : unit/test_exact_number.i
+
+# target to preprocess a source file
+unit/test_exact_number.cpp.i:
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.i
+.PHONY : unit/test_exact_number.cpp.i
+
+unit/test_exact_number.s: unit/test_exact_number.cpp.s
+.PHONY : unit/test_exact_number.s
+
+# target to generate assembly for a file
+unit/test_exact_number.cpp.s:
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.s
+.PHONY : unit/test_exact_number.cpp.s
+
+unit/test_expression_coverage.o: unit/test_expression_coverage.cpp.o
+.PHONY : unit/test_expression_coverage.o
+
+# target to build an object file
+unit/test_expression_coverage.cpp.o:
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.o
+.PHONY : unit/test_expression_coverage.cpp.o
+
+unit/test_expression_coverage.i: unit/test_expression_coverage.cpp.i
+.PHONY : unit/test_expression_coverage.i
+
+# target to preprocess a source file
+unit/test_expression_coverage.cpp.i:
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.i
+.PHONY : unit/test_expression_coverage.cpp.i
+
+unit/test_expression_coverage.s: unit/test_expression_coverage.cpp.s
+.PHONY : unit/test_expression_coverage.s
+
+# target to generate assembly for a file
+unit/test_expression_coverage.cpp.s:
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.s
+.PHONY : unit/test_expression_coverage.cpp.s
 
 unit/test_factory.o: unit/test_factory.cpp.o
 .PHONY : unit/test_factory.o
@@ -424,6 +496,30 @@ unit/test_parser.s: unit/test_parser.cpp.s
 unit/test_parser.cpp.s:
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_parser.cpp.s
 .PHONY : unit/test_parser.cpp.s
+
+unit/test_validation.o: unit/test_validation.cpp.o
+.PHONY : unit/test_validation.o
+
+# target to build an object file
+unit/test_validation.cpp.o:
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.o
+.PHONY : unit/test_validation.cpp.o
+
+unit/test_validation.i: unit/test_validation.cpp.i
+.PHONY : unit/test_validation.i
+
+# target to preprocess a source file
+unit/test_validation.cpp.i:
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.i
+.PHONY : unit/test_validation.cpp.i
+
+unit/test_validation.s: unit/test_validation.cpp.s
+.PHONY : unit/test_validation.s
+
+# target to generate assembly for a file
+unit/test_validation.cpp.s:
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov && $(MAKE) $(MAKESILENT) -f tests/CMakeFiles/wavefront_tests.dir/build.make tests/CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.s
+.PHONY : unit/test_validation.cpp.s
 
 verification/test_boundary_conditions.o: verification/test_boundary_conditions.cpp.o
 .PHONY : verification/test_boundary_conditions.o
@@ -604,15 +700,27 @@ help:
 	@echo "... unit/test_boundary_interface.o"
 	@echo "... unit/test_boundary_interface.i"
 	@echo "... unit/test_boundary_interface.s"
+	@echo "... unit/test_coverage_gaps.o"
+	@echo "... unit/test_coverage_gaps.i"
+	@echo "... unit/test_coverage_gaps.s"
 	@echo "... unit/test_dimensions.o"
 	@echo "... unit/test_dimensions.i"
 	@echo "... unit/test_dimensions.s"
+	@echo "... unit/test_exact_number.o"
+	@echo "... unit/test_exact_number.i"
+	@echo "... unit/test_exact_number.s"
+	@echo "... unit/test_expression_coverage.o"
+	@echo "... unit/test_expression_coverage.i"
+	@echo "... unit/test_expression_coverage.s"
 	@echo "... unit/test_factory.o"
 	@echo "... unit/test_factory.i"
 	@echo "... unit/test_factory.s"
 	@echo "... unit/test_parser.o"
 	@echo "... unit/test_parser.i"
 	@echo "... unit/test_parser.s"
+	@echo "... unit/test_validation.o"
+	@echo "... unit/test_validation.i"
+	@echo "... unit/test_validation.s"
 	@echo "... verification/test_boundary_conditions.o"
 	@echo "... verification/test_boundary_conditions.i"
 	@echo "... verification/test_boundary_conditions.s"

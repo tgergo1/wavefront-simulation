@@ -156,10 +156,66 @@ tests/CMakeFiles/wavefront_tests.dir/unit/test_barriers.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/wavefront_tests.dir/unit/test_barriers.cpp.s"
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_barriers.cpp -o CMakeFiles/wavefront_tests.dir/unit/test_barriers.cpp.s
 
+tests/CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
+tests/CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_validation.cpp
+tests/CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.o"
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.o -MF CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.o.d -o CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_validation.cpp
+
+tests/CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.i"
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_validation.cpp > CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.i
+
+tests/CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.s"
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_validation.cpp -o CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.s
+
+tests/CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
+tests/CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_expression_coverage.cpp
+tests/CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.o"
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.o -MF CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.o.d -o CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_expression_coverage.cpp
+
+tests/CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.i"
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_expression_coverage.cpp > CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.i
+
+tests/CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.s"
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_expression_coverage.cpp -o CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.s
+
+tests/CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
+tests/CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_exact_number.cpp
+tests/CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.o"
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.o -MF CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.o.d -o CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_exact_number.cpp
+
+tests/CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.i"
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_exact_number.cpp > CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.i
+
+tests/CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.s"
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_exact_number.cpp -o CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.s
+
+tests/CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
+tests/CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_coverage_gaps.cpp
+tests/CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.o"
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.o -MF CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.o.d -o CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_coverage_gaps.cpp
+
+tests/CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.i"
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_coverage_gaps.cpp > CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.i
+
+tests/CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.s"
+	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/runner/work/wavefront-simulation/wavefront-simulation/tests/unit/test_coverage_gaps.cpp -o CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.s
+
 tests/CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
 tests/CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/integration/test_mode_parity.cpp
 tests/CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o"
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o -MF CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o.d -o CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/integration/test_mode_parity.cpp
 
 tests/CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.i: cmake_force
@@ -173,7 +229,7 @@ tests/CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.s: cmake_f
 tests/CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
 tests/CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/verification/test_invariants.cpp
 tests/CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o"
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o -MF CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o.d -o CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/verification/test_invariants.cpp
 
 tests/CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.i: cmake_force
@@ -187,7 +243,7 @@ tests/CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.s: cmake_f
 tests/CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
 tests/CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/verification/test_convergence.cpp
 tests/CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o"
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o -MF CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o.d -o CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/verification/test_convergence.cpp
 
 tests/CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.i: cmake_force
@@ -201,7 +257,7 @@ tests/CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.s: cmake_
 tests/CMakeFiles/wavefront_tests.dir/verification/test_physical_validity.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
 tests/CMakeFiles/wavefront_tests.dir/verification/test_physical_validity.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/verification/test_physical_validity.cpp
 tests/CMakeFiles/wavefront_tests.dir/verification/test_physical_validity.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/verification/test_physical_validity.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/verification/test_physical_validity.cpp.o"
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/verification/test_physical_validity.cpp.o -MF CMakeFiles/wavefront_tests.dir/verification/test_physical_validity.cpp.o.d -o CMakeFiles/wavefront_tests.dir/verification/test_physical_validity.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/verification/test_physical_validity.cpp
 
 tests/CMakeFiles/wavefront_tests.dir/verification/test_physical_validity.cpp.i: cmake_force
@@ -215,7 +271,7 @@ tests/CMakeFiles/wavefront_tests.dir/verification/test_physical_validity.cpp.s: 
 tests/CMakeFiles/wavefront_tests.dir/verification/test_reflection_refraction.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
 tests/CMakeFiles/wavefront_tests.dir/verification/test_reflection_refraction.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/verification/test_reflection_refraction.cpp
 tests/CMakeFiles/wavefront_tests.dir/verification/test_reflection_refraction.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/verification/test_reflection_refraction.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/verification/test_reflection_refraction.cpp.o"
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/verification/test_reflection_refraction.cpp.o -MF CMakeFiles/wavefront_tests.dir/verification/test_reflection_refraction.cpp.o.d -o CMakeFiles/wavefront_tests.dir/verification/test_reflection_refraction.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/verification/test_reflection_refraction.cpp
 
 tests/CMakeFiles/wavefront_tests.dir/verification/test_reflection_refraction.cpp.i: cmake_force
@@ -229,7 +285,7 @@ tests/CMakeFiles/wavefront_tests.dir/verification/test_reflection_refraction.cpp
 tests/CMakeFiles/wavefront_tests.dir/verification/test_multi_object.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
 tests/CMakeFiles/wavefront_tests.dir/verification/test_multi_object.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/verification/test_multi_object.cpp
 tests/CMakeFiles/wavefront_tests.dir/verification/test_multi_object.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/verification/test_multi_object.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/verification/test_multi_object.cpp.o"
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/verification/test_multi_object.cpp.o -MF CMakeFiles/wavefront_tests.dir/verification/test_multi_object.cpp.o.d -o CMakeFiles/wavefront_tests.dir/verification/test_multi_object.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/verification/test_multi_object.cpp
 
 tests/CMakeFiles/wavefront_tests.dir/verification/test_multi_object.cpp.i: cmake_force
@@ -243,7 +299,7 @@ tests/CMakeFiles/wavefront_tests.dir/verification/test_multi_object.cpp.s: cmake
 tests/CMakeFiles/wavefront_tests.dir/verification/test_boundary_conditions.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
 tests/CMakeFiles/wavefront_tests.dir/verification/test_boundary_conditions.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/verification/test_boundary_conditions.cpp
 tests/CMakeFiles/wavefront_tests.dir/verification/test_boundary_conditions.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/verification/test_boundary_conditions.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/verification/test_boundary_conditions.cpp.o"
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/verification/test_boundary_conditions.cpp.o -MF CMakeFiles/wavefront_tests.dir/verification/test_boundary_conditions.cpp.o.d -o CMakeFiles/wavefront_tests.dir/verification/test_boundary_conditions.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/verification/test_boundary_conditions.cpp
 
 tests/CMakeFiles/wavefront_tests.dir/verification/test_boundary_conditions.cpp.i: cmake_force
@@ -257,7 +313,7 @@ tests/CMakeFiles/wavefront_tests.dir/verification/test_boundary_conditions.cpp.s
 tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_published_cases.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
 tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_published_cases.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/benchmarks/test_published_cases.cpp
 tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_published_cases.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_published_cases.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_published_cases.cpp.o"
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_published_cases.cpp.o -MF CMakeFiles/wavefront_tests.dir/benchmarks/test_published_cases.cpp.o.d -o CMakeFiles/wavefront_tests.dir/benchmarks/test_published_cases.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/benchmarks/test_published_cases.cpp
 
 tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_published_cases.cpp.i: cmake_force
@@ -271,7 +327,7 @@ tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_published_cases.cpp.s: cmak
 tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_real_world_wave_data.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
 tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_real_world_wave_data.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/benchmarks/test_real_world_wave_data.cpp
 tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_real_world_wave_data.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_real_world_wave_data.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_real_world_wave_data.cpp.o"
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_real_world_wave_data.cpp.o -MF CMakeFiles/wavefront_tests.dir/benchmarks/test_real_world_wave_data.cpp.o.d -o CMakeFiles/wavefront_tests.dir/benchmarks/test_real_world_wave_data.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/benchmarks/test_real_world_wave_data.cpp
 
 tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_real_world_wave_data.cpp.i: cmake_force
@@ -285,7 +341,7 @@ tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_real_world_wave_data.cpp.s:
 tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_quantum_cases.cpp.o: tests/CMakeFiles/wavefront_tests.dir/flags.make
 tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_quantum_cases.cpp.o: /home/runner/work/wavefront-simulation/wavefront-simulation/tests/benchmarks/test_quantum_cases.cpp
 tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_quantum_cases.cpp.o: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_quantum_cases.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_20) "Building CXX object tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_quantum_cases.cpp.o"
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_quantum_cases.cpp.o -MF CMakeFiles/wavefront_tests.dir/benchmarks/test_quantum_cases.cpp.o.d -o CMakeFiles/wavefront_tests.dir/benchmarks/test_quantum_cases.cpp.o -c /home/runner/work/wavefront-simulation/wavefront-simulation/tests/benchmarks/test_quantum_cases.cpp
 
 tests/CMakeFiles/wavefront_tests.dir/benchmarks/test_quantum_cases.cpp.i: cmake_force
@@ -304,6 +360,10 @@ wavefront_tests_OBJECTS = \
 "CMakeFiles/wavefront_tests.dir/unit/test_boundary_interface.cpp.o" \
 "CMakeFiles/wavefront_tests.dir/unit/test_dimensions.cpp.o" \
 "CMakeFiles/wavefront_tests.dir/unit/test_barriers.cpp.o" \
+"CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.o" \
+"CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.o" \
+"CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.o" \
+"CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.o" \
 "CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o" \
 "CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o" \
 "CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o" \
@@ -324,6 +384,10 @@ tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/unit/test_factory.cp
 tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/unit/test_boundary_interface.cpp.o
 tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/unit/test_dimensions.cpp.o
 tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/unit/test_barriers.cpp.o
+tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/unit/test_validation.cpp.o
+tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/unit/test_expression_coverage.cpp.o
+tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/unit/test_exact_number.cpp.o
+tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/unit/test_coverage_gaps.cpp.o
 tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/integration/test_mode_parity.cpp.o
 tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/verification/test_invariants.cpp.o
 tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/verification/test_convergence.cpp.o
@@ -338,7 +402,7 @@ tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/build.make
 tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/compiler_depend.ts
 tests/wavefront_tests: libwavefront.a
 tests/wavefront_tests: tests/CMakeFiles/wavefront_tests.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Linking CXX executable wavefront_tests"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/CMakeFiles --progress-num=$(CMAKE_PROGRESS_21) "Linking CXX executable wavefront_tests"
 	cd /home/runner/work/wavefront-simulation/wavefront-simulation/build_cov/tests && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/wavefront_tests.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.
