@@ -22,6 +22,7 @@ The README GIF pipeline validates:
 - Interface case: both reflected and transmitted waves must be nontrivial.
 - Boundary case: periodic right-strip energy must exceed PML right-strip energy at early and late checkpoints; PML absorbed energy must be nonzero.
 - Double-slit case: early far-right phantom energy must stay below threshold; near-wall slit transmission must dominate blocked transmission; far screen must show multiple fringes.
+- Longitudinal case: divergence-field RMS must remain nontrivial and the longitudinal divergence visualisation must stay measurably distinct from the transverse comparison field.
 - 3D volume case: axis isotropy spread in homogeneous medium must remain bounded; mid-frame active-voxel support must exceed minimum.
 
 ## Latest Metrics Artifact

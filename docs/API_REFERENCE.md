@@ -7,6 +7,7 @@ Public entrypoint: `/Users/gergely.toth/Work/wavefront-simulation/include/wavefr
 ### Core enums
 
 - `wavefront::SolverMode`
+- `wavefront::WaveType`
 - `wavefront::PrecisionMode`
 - `wavefront::BoundaryType`
 
@@ -22,6 +23,8 @@ Public entrypoint: `/Users/gergely.toth/Work/wavefront-simulation/include/wavefr
 ### Solver lifecycle
 
 1. Construct `ProblemSpec` and `SolverConfig`.
+   - Set `problem.wave_type = wavefront::WaveType::Longitudinal` for compressional / P-wave behaviour.
+   - Use `field_components >= dims` when modelling vector longitudinal displacement fields.
 2. Build solver with `make_solver(problem, config)`.
 3. Run with `step()` or `run(steps)`.
 4. Observe state via `sample(index)` and `diagnostics_json()`.
@@ -40,7 +43,7 @@ Package: `wavefront`
 
 Exposed symbols:
 
-- `SolverMode`, `PrecisionMode`, `BoundaryType`
+- `SolverMode`, `WaveType`, `PrecisionMode`, `BoundaryType`
 - `GridSpec`, `SymbolicExpr`, `MediumLaw`, `BoundarySpec`, `ProblemSpec`, `SolverConfig`
 - `Solver`
 
