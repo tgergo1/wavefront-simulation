@@ -14,6 +14,11 @@ enum class SolverMode {
   MicroSurrogate,
 };
 
+enum class WaveType {
+  Transverse,
+  Longitudinal,
+};
+
 enum class PrecisionMode {
   FastFloat64,
   ExactReference,
@@ -59,6 +64,7 @@ struct ProblemSpec {
   std::vector<BoundarySpec> boundaries;
   SymbolicExpr source_term{"0.0"};
   std::size_t field_components = 1;
+  WaveType wave_type = WaveType::Transverse;
 };
 
 struct SolverConfig {

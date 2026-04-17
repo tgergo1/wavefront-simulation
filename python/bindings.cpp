@@ -45,6 +45,10 @@ PYBIND11_MODULE(_wavefront, m) {
       .value("NonlinearContinuum", wavefront::SolverMode::NonlinearContinuum)
       .value("MicroSurrogate", wavefront::SolverMode::MicroSurrogate);
 
+  py::enum_<wavefront::WaveType>(m, "WaveType")
+      .value("Transverse", wavefront::WaveType::Transverse)
+      .value("Longitudinal", wavefront::WaveType::Longitudinal);
+
   py::enum_<wavefront::PrecisionMode>(m, "PrecisionMode")
       .value("FastFloat64", wavefront::PrecisionMode::FastFloat64)
       .value("ExactReference", wavefront::PrecisionMode::ExactReference);
@@ -89,7 +93,8 @@ PYBIND11_MODULE(_wavefront, m) {
       .def_readwrite("medium", &wavefront::ProblemSpec::medium)
       .def_readwrite("boundaries", &wavefront::ProblemSpec::boundaries)
       .def_readwrite("source_term", &wavefront::ProblemSpec::source_term)
-      .def_readwrite("field_components", &wavefront::ProblemSpec::field_components);
+      .def_readwrite("field_components", &wavefront::ProblemSpec::field_components)
+      .def_readwrite("wave_type", &wavefront::ProblemSpec::wave_type);
 
   py::class_<wavefront::SolverConfig>(m, "SolverConfig")
       .def(py::init<>())

@@ -11,6 +11,7 @@ from ._wavefront import (
     SolverConfig,
     SolverMode,
     SymbolicExpr,
+    WaveType,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "SolverConfig",
     "SolverMode",
     "SymbolicExpr",
+    "WaveType",
 ]
