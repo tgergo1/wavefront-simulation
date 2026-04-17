@@ -338,12 +338,12 @@ class RuntimeSolver final : public ISolver {
     return (u_p1 - u_m1) / (2.0 * grid_.spacing()[axis]);
   }
 
-  // ---------------------------------------------------------------------------
-  //  Longitudinal wave: grad-div operator
-  //  ∂/∂x_i (∇·u) = Σ_j  ∂²u_j / (∂x_i ∂x_j)
-  //  When j == i : standard second derivative ∂²u_i/∂x_i²
-  //  When j != i : mixed derivative via 4-point stencil
-  // ---------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------
+    //  Longitudinal wave: grad-div operator
+    //  d/dx_i (div u) = sum_j d^2 u_j / (dx_i dx_j)
+    //  When j == i : standard second derivative d^2 u_i / dx_i^2
+    //  When j != i : mixed derivative via 4-point stencil
+    // ---------------------------------------------------------------------------
 
   std::vector<std::size_t> neighbor_center(
       const std::vector<std::size_t>& center,
@@ -381,7 +381,7 @@ class RuntimeSolver final : public ISolver {
 
     for (std::size_t j = 0; j < n_coupled; ++j) {
       if (j == component_i) {
-        // ∂²u_i / ∂x_i²  (standard second derivative along axis i)
+        // d^2 u_i / dx_i^2  (standard second derivative along axis i)
         const double h = grid_.spacing()[j];
         const double inv_h2 = 1.0 / (h * h);
         const double u_c = field.at_flat(flat, j);
@@ -389,7 +389,7 @@ class RuntimeSolver final : public ISolver {
         const double u_m = neighbor_value(field, center, j, j, -1);
         result += (u_p - 2.0 * u_c + u_m) * inv_h2;
       } else {
-        // ∂²u_j / (∂x_i ∂x_j) via mixed 4-point stencil:
+        // d^2 u_j / (dx_i dx_j) via mixed 4-point stencil:
         //   [u_j(+i,+j) - u_j(+i,-j) - u_j(-i,+j) + u_j(-i,-j)] / (4·h_i·h_j)
         const double h_i = grid_.spacing()[component_i];
         const double h_j = grid_.spacing()[j];
@@ -469,8 +469,8 @@ class RuntimeSolver final : public ISolver {
     const double dt2 = dt_ * dt_;
 
     // Choose the spatial operator based on wave type.
-    // Transverse: independent Laplacian per component  (∂²u_i/∂t² = c² ∇²u_i)
-    // Longitudinal with coupled components:  grad-div  (∂²u_i/∂t² = c² ∂(∇·u)/∂x_i)
+    // Transverse: independent Laplacian per component  (d^2 u_i / dt^2 = c^2 laplacian(u_i))
+    // Longitudinal with coupled components: grad-div  (d^2 u_i / dt^2 = c^2 d(div u)/dx_i)
     // Longitudinal with scalar (1 component): Laplacian (equivalent to scalar P-wave)
     const bool use_grad_div = (problem_.wave_type == WaveType::Longitudinal &&
                                problem_.field_components > 1 &&
