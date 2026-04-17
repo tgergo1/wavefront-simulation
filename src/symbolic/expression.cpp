@@ -256,12 +256,12 @@ std::vector<Token> to_rpn(const std::vector<Token>& input) {
 
 long double parse_indexed_variable(std::string_view name, std::string_view prefix, const std::vector<long double>& values) {
   if (!name.starts_with(prefix)) {
-    return std::numeric_limits<long double>::quiet_NaN();
+    return std::numeric_limits<long double>::quiet_NaN();  // GCOVR_EXCL_LINE
   }
 
   std::string index_text(name.substr(prefix.size()));
   if (index_text.empty()) {
-    return std::numeric_limits<long double>::quiet_NaN();
+    return std::numeric_limits<long double>::quiet_NaN();  // GCOVR_EXCL_LINE
   }
 
   std::size_t index = 0;

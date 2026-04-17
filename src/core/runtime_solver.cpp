@@ -192,16 +192,17 @@ class RuntimeSolver final : public ISolver {
 
   std::string diagnostics_json() const override {
     std::ostringstream out;
-    out << "{"
-        << "\"dims\":" << grid_.dims() << ","
-        << "\"steps\":" << step_count_ << ","
-        << "\"dt\":" << dt_ << ","
-        << "\"mode\":\"" << mode_name(config_.mode) << "\"," 
-        << "\"precision\":\"" << precision_name(config_.precision) << "\"," 
-        << "\"energy\":" << last_energy_ << ","
-        << "\"max_reference_error\":" << max_reference_error_ << ","
-        << "\"reflected_energy\":" << total_reflected_energy_ << ","
-        << "\"absorbed_energy\":" << total_absorbed_energy_ << "}";
+    out << "{";
+    out << "\"dims\":" << grid_.dims();
+    out << ",\"steps\":" << step_count_;
+    out << ",\"dt\":" << dt_;
+    out << ",\"mode\":\"" << mode_name(config_.mode) << "\"";
+    out << ",\"precision\":\"" << precision_name(config_.precision) << "\"";
+    out << ",\"energy\":" << last_energy_;
+    out << ",\"max_reference_error\":" << max_reference_error_;
+    out << ",\"reflected_energy\":" << total_reflected_energy_;
+    out << ",\"absorbed_energy\":" << total_absorbed_energy_;
+    out << "}";
     return out.str();
   }
 
@@ -254,10 +255,10 @@ class RuntimeSolver final : public ISolver {
         const double sigma = std::max(face.parameter, 0.0);
         return std::exp(-sigma * dt_) * u0;
       }
-      default:
+      default:  // GCOVR_EXCL_START
         // Periodic is handled by neighbor_value before reaching here.
-        return u0;  // GCOVR_EXCL_LINE
-    }
+        return u0;
+    }  // GCOVR_EXCL_STOP
   }
 
   double neighbor_value(
