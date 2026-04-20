@@ -9,6 +9,7 @@ p.grid.shape = {96, 96, 96};
 p.grid.spacing = {0.01, 0.01, 0.01};
 p.grid.origin = {0.0, 0.0, 0.0};
 p.field_components = 1;
+p.wave_type = wavefront::WaveType::Transverse;
 p.medium.density.text = "1.0";
 p.medium.stiffness.text = "2.0";
 p.medium.damping.text = "0.005";
@@ -35,3 +36,13 @@ auto solver = wavefront::make_solver(p, c);
 solver->run(200);
 auto center = solver->sample({48, 48, 48});
 ```
+
+For a longitudinal / compressional setup, switch to:
+
+```cpp
+p.wave_type = wavefront::WaveType::Longitudinal;
+p.field_components = 3;  // displacement components u_x, u_y, u_z
+```
+
+With `WaveType::Longitudinal`, the runtime solver evolves vector components with
+the grad-div operator `∇(∇·u)` instead of independent scalar Laplacians.

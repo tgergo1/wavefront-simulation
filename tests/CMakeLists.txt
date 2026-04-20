@@ -20,6 +20,7 @@ set(WAVEFRONT_TEST_SOURCES
     unit/test_expression_coverage.cpp
     unit/test_exact_number.cpp
     unit/test_coverage_gaps.cpp
+    unit/test_longitudinal.cpp
     integration/test_mode_parity.cpp
     verification/test_invariants.cpp
     verification/test_convergence.cpp
@@ -27,6 +28,7 @@ set(WAVEFRONT_TEST_SOURCES
     verification/test_reflection_refraction.cpp
     verification/test_multi_object.cpp
     verification/test_boundary_conditions.cpp
+    verification/test_longitudinal_validity.cpp
     benchmarks/test_published_cases.cpp
     benchmarks/test_real_world_wave_data.cpp
     benchmarks/test_quantum_cases.cpp

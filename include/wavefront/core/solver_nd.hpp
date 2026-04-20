@@ -73,6 +73,7 @@ class SolverND {
   void set_memory_attenuation(Scalar value) { memory_coeff_ = value; }
   void set_source_amplitude(Scalar value) { source_amplitude_ = value; }
   void set_thread_count(std::size_t n) { thread_count_ = n; }
+  void set_wave_type(WaveType value) { wave_type_ = value; }
 
   void step() {
     const Scalar c2dt2 = wave_speed_ * wave_speed_ * dt_ * dt_;
@@ -86,7 +87,14 @@ class SolverND {
             for (std::size_t component = 0; component < components_; ++component) {
               const std::size_t offset = flat * components_ + component;
               const Scalar u = u_curr_[offset];
-              const Scalar lap = laplacian(flat, component);
+
+              // Choose spatial operator: grad-div for longitudinal, Laplacian for transverse
+              const bool use_grad_div = (wave_type_ == WaveType::Longitudinal &&
+                                         components_ > 1 &&
+                                         component < N);
+              const Scalar spatial = use_grad_div
+                                         ? grad_div_component(flat, component)
+                                         : laplacian(flat, component);
 
               Scalar forcing = source_amplitude_ * std::sin(static_cast<Scalar>(steps_) * dt_);
 
@@ -95,12 +103,13 @@ class SolverND {
                 correction += nonlinear_coeff_ * u * u * u;
               }
               if constexpr (Mode == SolverMode::MicroSurrogate) {
+                const Scalar lap = laplacian(flat, component);
                 correction += micro_grad_coeff_ * lap;
                 const Scalar memory = (u_curr_[offset] - u_prev_[offset]) / dt_;
                 correction -= memory_coeff_ * memory;
               }
 
-              u_next_[offset] = Scalar{2} * u_curr_[offset] - u_prev_[offset] + c2dt2 * lap + dt_ * dt_ * (forcing + correction);
+              u_next_[offset] = Scalar{2} * u_curr_[offset] - u_prev_[offset] + c2dt2 * spatial + dt_ * dt_ * (forcing + correction);
             }
           }
         });
@@ -186,6 +195,62 @@ class SolverND {
     return sum;
   }
 
+  // Grad-div operator for longitudinal waves:
+  //   (∇(∇·u))_i = Σ_j ∂²u_j / (∂x_i ∂x_j)
+  // Uses periodic boundary wrapping (consistent with the Laplacian method above).
+  Scalar grad_div_component(std::size_t flat, std::size_t component_i) const {
+    const Index center = unravel(flat);
+    const std::size_t n_coupled = std::min(N, components_);
+    Scalar result = Scalar{0};
+
+    for (std::size_t j = 0; j < n_coupled; ++j) {
+      if (j == component_i) {
+        // ∂²u_i / ∂x_i²  (standard second derivative)
+        Index lower = center;
+        Index upper = center;
+        if (center[j] == 0) {
+          lower[j] = shape_[j] - 1;
+        } else {
+          lower[j] -= 1;
+        }
+        if (center[j] + 1 == shape_[j]) {
+          upper[j] = 0;
+        } else {
+          upper[j] += 1;
+        }
+        const Scalar u_c = u_curr_[flat * components_ + j];
+        const Scalar u_lo = u_curr_[flatten(lower) * components_ + j];
+        const Scalar u_up = u_curr_[flatten(upper) * components_ + j];
+        const Scalar inv_h2 = Scalar{1} / (spacing_[j] * spacing_[j]);
+        result += (u_up - Scalar{2} * u_c + u_lo) * inv_h2;
+      } else {
+        // ∂²u_j / (∂x_i ∂x_j)  via 4-point mixed derivative stencil
+        auto wrap = [&](Index idx, std::size_t axis, int delta) {
+          int target = static_cast<int>(idx[axis]) + delta;
+          int extent = static_cast<int>(shape_[axis]);
+          target %= extent;
+          if (target < 0) {
+            target += extent;
+          }
+          idx[axis] = static_cast<std::size_t>(target);
+          return idx;
+        };
+
+        const Index pi = wrap(center, component_i, +1);
+        const Index mi = wrap(center, component_i, -1);
+
+        const Scalar u_pp = u_curr_[flatten(wrap(pi, j, +1)) * components_ + j];
+        const Scalar u_pm = u_curr_[flatten(wrap(pi, j, -1)) * components_ + j];
+        const Scalar u_mp = u_curr_[flatten(wrap(mi, j, +1)) * components_ + j];
+        const Scalar u_mm = u_curr_[flatten(wrap(mi, j, -1)) * components_ + j];
+
+        const Scalar inv_4hihj = Scalar{1} / (Scalar{4} * spacing_[component_i] * spacing_[j]);
+        result += (u_pp - u_pm - u_mp + u_mm) * inv_4hihj;
+      }
+    }
+    return result;
+  }
+
   std::array<std::size_t, N> shape_{};
   std::array<std::size_t, N> strides_{};
   std::array<Scalar, N> spacing_{};
@@ -193,6 +258,7 @@ class SolverND {
   std::size_t total_points_ = 0;
   std::size_t steps_ = 0;
   std::size_t thread_count_ = 0;
+  WaveType wave_type_ = WaveType::Transverse;
 
   Scalar wave_speed_ = Scalar{1};
   Scalar dt_ = Scalar{0.01};

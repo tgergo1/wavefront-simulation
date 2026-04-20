@@ -17,6 +17,11 @@
     "reflected_rms": 0.01553559955999996,
     "transmitted_rms": 0.01276591661706834
   },
+  "longitudinal_wave": {
+    "divergence_rms": 0.04786994319629239,
+    "longitudinal_vs_transverse_l2": 0.048122709730432055,
+    "transverse_rms": 0.004925822792504398
+  },
   "modes_evolution": {
     "linear_vs_micro_l2": 0.05390343317442829,
     "linear_vs_nonlinear_l2": 0.001085145615286114

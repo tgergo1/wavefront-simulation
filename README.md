@@ -32,13 +32,21 @@ Single source on the left, opaque wall in the middle (dark gray) with two open s
 
 ![Double slit experiment](docs/assets/wavefield-double-slit.gif)
 
-### 5) 3D Wavefield (Volumetric Perspective)
+### 5) Longitudinal Wave (Compressional / P-wave) Example
+
+Left: longitudinal 2-component displacement field rendered as its divergence
+(`∇·u`), exposing alternating compression and rarefaction bands.
+Right: transverse scalar wave under the same source and medium, for comparison.
+
+![Longitudinal wave divergence vs transverse comparison](docs/assets/wavefield-longitudinal.gif)
+
+### 6) 3D Wavefield (Volumetric Perspective)
 
 Full 3D simulation rendered as a perspective volume (not slice planes), with a rotating camera to show depth.
 
 ![3d wave volume](docs/assets/wavefield-3d-volume.gif)
 
-### 6) 4D Wavefield (Hyperslice Grid)
+### 7) 4D Wavefield (Hyperslice Grid)
 
 A 4-D acoustic wave launched from a point source at the centre of [0,1]⁴.  
 Because wave fronts in 4-D expand as a 3-sphere (the surface of a 4-ball),
@@ -65,6 +73,7 @@ Note: GIF export requires `ffmpeg` on `PATH`.
 ## Features
 
 - Runtime interchangeable modes: `LinearApprox`, `NonlinearContinuum`, `MicroSurrogate`
+- Wave families: transverse scalar propagation and longitudinal vector propagation
 - Compile-time solver API: `SolverND<N, Scalar, Mode>`
 - N-D Cartesian domains and configurable spatial order (2nd / 4th)
 - Boundary operators: Dirichlet, Neumann, Robin, Periodic, Impedance, PML

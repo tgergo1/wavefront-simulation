@@ -43,6 +43,16 @@ std::string mode_name(SolverMode mode) {
   return "LinearApprox";  // GCOVR_EXCL_LINE
 }
 
+std::string wave_type_name(WaveType wave_type) {
+  switch (wave_type) {
+    case WaveType::Transverse:
+      return "Transverse";
+    case WaveType::Longitudinal:
+      return "Longitudinal";
+  }
+  return "Transverse";  // GCOVR_EXCL_LINE
+}
+
 std::string precision_name(PrecisionMode mode) {
   switch (mode) {
     case PrecisionMode::FastFloat64:
@@ -198,6 +208,7 @@ class RuntimeSolver final : public ISolver {
     out << ",\"dt\":" << dt_;
     out << ",\"mode\":\"" << mode_name(config_.mode) << "\"";
     out << ",\"precision\":\"" << precision_name(config_.precision) << "\"";
+    out << ",\"wave_type\":\"" << wave_type_name(problem_.wave_type) << "\"";
     out << ",\"energy\":" << last_energy_;
     out << ",\"max_reference_error\":" << max_reference_error_;
     out << ",\"reflected_energy\":" << total_reflected_energy_;
@@ -327,6 +338,75 @@ class RuntimeSolver final : public ISolver {
     return (u_p1 - u_m1) / (2.0 * grid_.spacing()[axis]);
   }
 
+    // ---------------------------------------------------------------------------
+    //  Longitudinal wave: grad-div operator
+    //  d/dx_i (div u) = sum_j d^2 u_j / (dx_i dx_j)
+    //  When j == i : standard second derivative d^2 u_i / dx_i^2
+    //  When j != i : mixed derivative via 4-point stencil
+    // ---------------------------------------------------------------------------
+
+  std::vector<std::size_t> neighbor_center(
+      const std::vector<std::size_t>& center,
+      std::size_t axis,
+      int delta) const {
+    auto result = center;
+    int target = static_cast<int>(center[axis]) + delta;
+    const auto extent = static_cast<int>(grid_.shape()[axis]);
+
+    if (target >= 0 && target < extent) {
+      result[axis] = static_cast<std::size_t>(target);
+    } else {
+      const bool upper = target >= extent;
+      const FaceBoundary& face = face_boundary(axis, upper);
+      if (face.type == BoundaryType::Periodic) {
+        target %= extent;
+        if (target < 0) {
+          target += extent;
+        }
+        result[axis] = static_cast<std::size_t>(target);
+      } else {
+        result[axis] = upper ? static_cast<std::size_t>(extent - 1) : 0;
+      }
+    }
+    return result;
+  }
+
+  double grad_div_component_at(
+      const FieldBuffer<double>& field,
+      std::size_t flat,
+      std::size_t component_i) const {
+    const std::vector<std::size_t> center = grid_.unravel_index(flat);
+    const std::size_t n_coupled = std::min(grid_.dims(), problem_.field_components);
+    double result = 0.0;
+
+    for (std::size_t j = 0; j < n_coupled; ++j) {
+      if (j == component_i) {
+        // d^2 u_i / dx_i^2  (standard second derivative along axis i)
+        const double h = grid_.spacing()[j];
+        const double inv_h2 = 1.0 / (h * h);
+        const double u_c = field.at_flat(flat, j);
+        const double u_p = neighbor_value(field, center, j, j, +1);
+        const double u_m = neighbor_value(field, center, j, j, -1);
+        result += (u_p - 2.0 * u_c + u_m) * inv_h2;
+      } else {
+        // d^2 u_j / (dx_i dx_j) via mixed 4-point stencil:
+        //   [u_j(+i,+j) - u_j(+i,-j) - u_j(-i,+j) + u_j(-i,-j)] / (4·h_i·h_j)
+        const double h_i = grid_.spacing()[component_i];
+        const double h_j = grid_.spacing()[j];
+        const auto center_pi = neighbor_center(center, component_i, +1);
+        const auto center_mi = neighbor_center(center, component_i, -1);
+
+        const double u_pp = neighbor_value(field, center_pi, j, j, +1);
+        const double u_pm = neighbor_value(field, center_pi, j, j, -1);
+        const double u_mp = neighbor_value(field, center_mi, j, j, +1);
+        const double u_mm = neighbor_value(field, center_mi, j, j, -1);
+
+        result += (u_pp - u_pm - u_mp + u_mm) / (4.0 * h_i * h_j);
+      }
+    }
+    return result;
+  }
+
   EvaluationContext build_context(std::size_t flat, std::size_t component, long double t) const {
     const std::vector<std::size_t> index = grid_.unravel_index(flat);
 
@@ -385,15 +465,26 @@ class RuntimeSolver final : public ISolver {
     const double source = source_expr_.evaluate_double(context);
 
     const double c2 = stiffness / density;
-    const double lap = laplacian_at(current_, flat, component);
     const double velocity = (current - previous) / dt_;
     const double dt2 = dt_ * dt_;
 
-    double rhs = c2 * lap + source - damping * velocity;
+    // Choose the spatial operator based on wave type.
+    // Transverse: independent Laplacian per component  (d^2 u_i / dt^2 = c^2 laplacian(u_i))
+    // Longitudinal with coupled components: grad-div  (d^2 u_i / dt^2 = c^2 d(div u)/dx_i)
+    // Longitudinal with scalar (1 component): Laplacian (equivalent to scalar P-wave)
+    const bool use_grad_div = (problem_.wave_type == WaveType::Longitudinal &&
+                               problem_.field_components > 1 &&
+                               component < grid_.dims());
+    const double spatial_term = use_grad_div
+                                    ? grad_div_component_at(current_, flat, component)
+                                    : laplacian_at(current_, flat, component);
+
+    double rhs = c2 * spatial_term + source - damping * velocity;
 
     if (config_.mode == SolverMode::NonlinearContinuum) {
       rhs += dispersion * current * current * current;
     } else if (config_.mode == SolverMode::MicroSurrogate) {
+      const double lap = laplacian_at(current_, flat, component);
       const double grad0 = directional_gradient(current_, flat, component, 0);
       const double grad1 = grid_.dims() > 1 ? directional_gradient(current_, flat, component, 1) : 0.0;
       const double anisotropy = grad0 * grad0 - grad1 * grad1;
