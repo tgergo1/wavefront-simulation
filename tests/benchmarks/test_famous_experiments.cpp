@@ -47,17 +47,18 @@ TEST_CASE("Young 1801: double-slit fringe spacing formula Δy = λL/d") {
   const double fringe_spacing = lambda * L / d;
   CHECK(fringe_spacing == doctest::Approx(5.0e-3).epsilon(1e-10));
 
-  // Verify intensity pattern at key positions
+  // Verify intensity pattern at key positions (I = cos²)
   const auto intensity = [&](double y) {
-    return std::cos(M_PI * d * y / (lambda * L));
+    const double phase = M_PI * d * y / (lambda * L);
+    return std::cos(phase) * std::cos(phase);
   };
 
   // Central maximum: full intensity
   CHECK(intensity(0.0) == doctest::Approx(1.0).epsilon(1e-12));
   // First minimum at y = λL/(2d) = 2.5 mm
-  CHECK(std::fabs(intensity(2.5e-3)) < 1e-10);
+  CHECK(intensity(2.5e-3) < 1e-10);
   // First-order maximum at y = λL/d = 5 mm
-  CHECK(std::fabs(intensity(5.0e-3)) == doctest::Approx(1.0).epsilon(1e-10));
+  CHECK(intensity(5.0e-3) == doctest::Approx(1.0).epsilon(1e-10));
 }
 
 TEST_CASE("Young 1801: double-slit intensity ratios at measured positions") {
@@ -680,7 +681,9 @@ TEST_CASE("Wave speed formula: c = sqrt(K/rho) verified for known materials") {
   const double c_water = wavefront::phase_velocity(2.2, 1.0);
   CHECK(c_water == doctest::Approx(std::sqrt(2.2)).epsilon(1e-10));
 
-  // Air: K=0.000142, rho=0.00122 → c=sqrt(0.000142/0.00122)≈0.341 (normalised to 341 m/s)
+  // Air: K ≈ 142 kPa, ρ ≈ 1.22 kg/m³ → c = sqrt(142000/1.22) ≈ 341 m/s
+  // Normalised (÷1000): K=0.142, rho=1.22e-3 → but using consistent units: K=0.142, rho=1.22
+  // gives c = sqrt(0.142/1.22) ≈ 0.341 which represents 341 m/s in this scale
   const double c_air = wavefront::phase_velocity(0.142, 1.22);
   CHECK(c_air == doctest::Approx(std::sqrt(0.142 / 1.22)).epsilon(1e-10));
 }
