@@ -1,12 +1,14 @@
 #include "runtime_solver.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <mutex>
 #include <sstream>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -117,6 +119,68 @@ struct CompiledGeometryRegion {
   CompiledExpression dispersion;
 };
 
+struct ExpressionRequirements {
+  bool needs_position = false;
+  bool needs_time = false;
+  bool needs_field = false;
+  bool needs_derivatives = false;
+  bool needs_component = false;
+
+  [[nodiscard]] bool spatial_only() const {
+    return !needs_time && !needs_field && !needs_derivatives && !needs_component;
+  }
+};
+
+bool is_prefixed_index_variable(std::string_view name, std::string_view prefix) {
+  if (!name.starts_with(prefix) || name.size() <= prefix.size()) {
+    return false;
+  }
+  return std::all_of(name.begin() + static_cast<std::ptrdiff_t>(prefix.size()), name.end(), [](char c) {
+    return std::isdigit(static_cast<unsigned char>(c)) != 0;
+  });
+}
+
+ExpressionRequirements analyze_expression_requirements(const CompiledExpression& expression) {
+  ExpressionRequirements requirements;
+  for (const auto& instruction : expression.bytecode()) {
+    if (instruction.op != OpCode::PushVariable) {
+      continue;
+    }
+    const std::string_view symbol = instruction.symbol;
+    if (symbol == "t") {
+      requirements.needs_time = true;
+      continue;
+    }
+    if (symbol == "component") {
+      requirements.needs_component = true;
+      continue;
+    }
+    if (is_prefixed_index_variable(symbol, "x_")) {
+      requirements.needs_position = true;
+      continue;
+    }
+    if (is_prefixed_index_variable(symbol, "u_")) {
+      requirements.needs_field = true;
+      continue;
+    }
+    if (symbol.starts_with("du")) {
+      requirements.needs_derivatives = true;
+      continue;
+    }
+    requirements.needs_position = true;
+  }
+  return requirements;
+}
+
+ExpressionRequirements merge_requirements(ExpressionRequirements lhs, const ExpressionRequirements& rhs) {
+  lhs.needs_position = lhs.needs_position || rhs.needs_position;
+  lhs.needs_time = lhs.needs_time || rhs.needs_time;
+  lhs.needs_field = lhs.needs_field || rhs.needs_field;
+  lhs.needs_derivatives = lhs.needs_derivatives || rhs.needs_derivatives;
+  lhs.needs_component = lhs.needs_component || rhs.needs_component;
+  return lhs;
+}
+
 double parse_boundary_parameter_scalar(const SymbolicExpr& expression, double fallback) {
   try {
     std::size_t pos = 0;
@@ -129,7 +193,7 @@ double parse_boundary_parameter_scalar(const SymbolicExpr& expression, double fa
   return fallback;
 }
 
-bool contains_region(const GeometryRegion& region, const std::vector<long double>& x) {
+bool contains_region(const GeometryRegion& region, std::span<const long double> x) {
   switch (region.shape) {
     case GeometryShape::Box:
       for (std::size_t axis = 0; axis < x.size(); ++axis) {
@@ -178,6 +242,9 @@ class RuntimeSolver final : public ISolver {
     damping_expr_ = compile_or_default(problem_.medium.damping, "0.0");
     dispersion_expr_ = compile_or_default(problem_.medium.dispersion, "0.0");
     source_expr_ = compile_or_default(problem_.source_term, "0.0");
+    analyze_expression_usage();
+    prepare_spatial_metadata();
+    build_static_coefficient_cache();
 
     double max_speed = 0.0;
     {
@@ -189,9 +256,12 @@ class RuntimeSolver final : public ISolver {
           [&](std::size_t begin, std::size_t end) {
             double local_max = 0.0;
             for (std::size_t flat = begin; flat < end; ++flat) {
-              const EvaluationContext context = coefficient_context(flat);
-              const double density = positive_or_floor(evaluate_density(context), 1.0e-12);
-              const double stiffness = positive_or_floor(evaluate_stiffness(context), 1.0e-12);
+              EvaluationContext context;
+              if (cached_density_.empty() || cached_stiffness_.empty()) {
+                context.x.assign(coordinates_for_flat(flat).begin(), coordinates_for_flat(flat).end());
+              }
+              const double density = positive_or_floor(evaluate_density(flat, context), 1.0e-12);
+              const double stiffness = positive_or_floor(evaluate_stiffness(flat, context), 1.0e-12);
               local_max = std::max(local_max, phase_velocity(stiffness, density));
             }
             std::lock_guard<std::mutex> lock(mtx);
@@ -557,7 +627,110 @@ class RuntimeSolver final : public ISolver {
           compile_or_default(region.medium.stiffness, "1.0"),
           compile_or_default(region.medium.damping, "0.0"),
           compile_or_default(region.medium.dispersion, "0.0"),
-      });
+        });
+    }
+  }
+
+  void prepare_spatial_metadata() {
+    const std::size_t points = grid_.total_points();
+    const std::size_t dims = grid_.dims();
+    coordinate_cache_.assign(points * dims, 0.0L);
+    region_index_cache_.assign(points, -1);
+
+    for (std::size_t flat = 0; flat < points; ++flat) {
+      const auto index = grid_.unravel_index(flat);
+      auto coordinates = coordinates_for_flat(flat);
+      for (std::size_t axis = 0; axis < dims; ++axis) {
+        coordinates[axis] = static_cast<long double>(grid_.origin()[axis] + index[axis] * grid_.spacing()[axis]);
+      }
+
+      for (std::size_t region_index = geometry_regions_.size(); region_index-- > 0;) {
+        if (contains_region(geometry_regions_[region_index].spec, coordinates)) {
+          region_index_cache_[flat] = static_cast<int>(region_index);
+          break;
+        }
+      }
+    }
+  }
+
+  void analyze_expression_usage() {
+    source_requirements_ = analyze_expression_requirements(source_expr_);
+    dynamic_coefficient_requirements_ = {};
+
+    density_static_ = analyze_expression_requirements(density_expr_).spatial_only();
+    stiffness_static_ = analyze_expression_requirements(stiffness_expr_).spatial_only();
+    damping_static_ = analyze_expression_requirements(damping_expr_).spatial_only();
+    dispersion_static_ = analyze_expression_requirements(dispersion_expr_).spatial_only();
+
+    if (!density_static_) {
+      dynamic_coefficient_requirements_ =
+          merge_requirements(dynamic_coefficient_requirements_, analyze_expression_requirements(density_expr_));
+    }
+    if (!stiffness_static_) {
+      dynamic_coefficient_requirements_ =
+          merge_requirements(dynamic_coefficient_requirements_, analyze_expression_requirements(stiffness_expr_));
+    }
+    if (!damping_static_) {
+      dynamic_coefficient_requirements_ =
+          merge_requirements(dynamic_coefficient_requirements_, analyze_expression_requirements(damping_expr_));
+    }
+    if (!dispersion_static_) {
+      dynamic_coefficient_requirements_ =
+          merge_requirements(dynamic_coefficient_requirements_, analyze_expression_requirements(dispersion_expr_));
+    }
+
+    for (const auto& region : geometry_regions_) {
+      const ExpressionRequirements density_requirements = analyze_expression_requirements(region.density);
+      const ExpressionRequirements stiffness_requirements = analyze_expression_requirements(region.stiffness);
+      const ExpressionRequirements damping_requirements = analyze_expression_requirements(region.damping);
+      const ExpressionRequirements dispersion_requirements = analyze_expression_requirements(region.dispersion);
+
+      density_static_ = density_static_ && density_requirements.spatial_only();
+      stiffness_static_ = stiffness_static_ && stiffness_requirements.spatial_only();
+      damping_static_ = damping_static_ && damping_requirements.spatial_only();
+      dispersion_static_ = dispersion_static_ && dispersion_requirements.spatial_only();
+
+      if (!density_requirements.spatial_only()) {
+        dynamic_coefficient_requirements_ = merge_requirements(dynamic_coefficient_requirements_, density_requirements);
+      }
+      if (!stiffness_requirements.spatial_only()) {
+        dynamic_coefficient_requirements_ = merge_requirements(dynamic_coefficient_requirements_, stiffness_requirements);
+      }
+      if (!damping_requirements.spatial_only()) {
+        dynamic_coefficient_requirements_ = merge_requirements(dynamic_coefficient_requirements_, damping_requirements);
+      }
+      if (!dispersion_requirements.spatial_only()) {
+        dynamic_coefficient_requirements_ = merge_requirements(dynamic_coefficient_requirements_, dispersion_requirements);
+      }
+    }
+  }
+
+  void build_static_coefficient_cache() {
+    const std::size_t points = grid_.total_points();
+    cached_density_.assign(density_static_ ? points : 0, 0.0);
+    cached_stiffness_.assign(stiffness_static_ ? points : 0, 0.0);
+    cached_damping_.assign(damping_static_ ? points : 0, 0.0);
+    cached_dispersion_.assign(dispersion_static_ ? points : 0, 0.0);
+
+    if (!density_static_ && !stiffness_static_ && !damping_static_ && !dispersion_static_) {
+      return;
+    }
+
+    for (std::size_t flat = 0; flat < points; ++flat) {
+      EvaluationContext context;
+      context.x.assign(coordinates_for_flat(flat).begin(), coordinates_for_flat(flat).end());
+      if (density_static_) {
+        cached_density_[flat] = evaluate_density_uncached(flat, context);
+      }
+      if (stiffness_static_) {
+        cached_stiffness_[flat] = evaluate_stiffness_uncached(flat, context);
+      }
+      if (damping_static_) {
+        cached_damping_[flat] = evaluate_damping_uncached(flat, context);
+      }
+      if (dispersion_static_) {
+        cached_dispersion_[flat] = evaluate_dispersion_uncached(flat, context);
+      }
     }
   }
 
@@ -574,57 +747,80 @@ class RuntimeSolver final : public ISolver {
     return upper ? upper_faces_[axis] : lower_faces_[axis];
   }
 
-  const CompiledGeometryRegion* matching_region(const std::vector<long double>& x) const {
-    for (auto it = geometry_regions_.rbegin(); it != geometry_regions_.rend(); ++it) {
-      if (contains_region(it->spec, x)) {
-        return &(*it);
-      }
-    }
-    return nullptr;
+  std::span<long double> coordinates_for_flat(std::size_t flat) {
+    return {coordinate_cache_.data() + flat * grid_.dims(), grid_.dims()};
   }
 
-  const CompiledExpression& density_expression(const EvaluationContext& context) const {
-    if (const auto* region = matching_region(context.x)) {
+  std::span<const long double> coordinates_for_flat(std::size_t flat) const {
+    return {coordinate_cache_.data() + flat * grid_.dims(), grid_.dims()};
+  }
+
+  const CompiledGeometryRegion* region_for_flat(std::size_t flat) const {
+    if (flat >= region_index_cache_.size()) {
+      return nullptr;
+    }
+    const int region_index = region_index_cache_[flat];
+    return region_index >= 0 ? &geometry_regions_[static_cast<std::size_t>(region_index)] : nullptr;
+  }
+
+  const CompiledExpression& density_expression(std::size_t flat) const {
+    if (const auto* region = region_for_flat(flat)) {
       return region->density;
     }
     return density_expr_;
   }
 
-  const CompiledExpression& stiffness_expression(const EvaluationContext& context) const {
-    if (const auto* region = matching_region(context.x)) {
+  const CompiledExpression& stiffness_expression(std::size_t flat) const {
+    if (const auto* region = region_for_flat(flat)) {
       return region->stiffness;
     }
     return stiffness_expr_;
   }
 
-  const CompiledExpression& damping_expression(const EvaluationContext& context) const {
-    if (const auto* region = matching_region(context.x)) {
+  const CompiledExpression& damping_expression(std::size_t flat) const {
+    if (const auto* region = region_for_flat(flat)) {
       return region->damping;
     }
     return damping_expr_;
   }
 
-  const CompiledExpression& dispersion_expression(const EvaluationContext& context) const {
-    if (const auto* region = matching_region(context.x)) {
+  const CompiledExpression& dispersion_expression(std::size_t flat) const {
+    if (const auto* region = region_for_flat(flat)) {
       return region->dispersion;
     }
     return dispersion_expr_;
   }
 
-  double evaluate_density(const EvaluationContext& context) const {
-    return density_expression(context).evaluate_double(context);
+  double evaluate_density_uncached(std::size_t flat, const EvaluationContext& context) const {
+    return density_expression(flat).evaluate_double(context);
   }
 
-  double evaluate_stiffness(const EvaluationContext& context) const {
-    return stiffness_expression(context).evaluate_double(context);
+  double evaluate_stiffness_uncached(std::size_t flat, const EvaluationContext& context) const {
+    return stiffness_expression(flat).evaluate_double(context);
   }
 
-  double evaluate_damping(const EvaluationContext& context) const {
-    return damping_expression(context).evaluate_double(context);
+  double evaluate_damping_uncached(std::size_t flat, const EvaluationContext& context) const {
+    return damping_expression(flat).evaluate_double(context);
   }
 
-  double evaluate_dispersion(const EvaluationContext& context) const {
-    return dispersion_expression(context).evaluate_double(context);
+  double evaluate_dispersion_uncached(std::size_t flat, const EvaluationContext& context) const {
+    return dispersion_expression(flat).evaluate_double(context);
+  }
+
+  double evaluate_density(std::size_t flat, const EvaluationContext& context) const {
+    return cached_density_.empty() ? evaluate_density_uncached(flat, context) : cached_density_[flat];
+  }
+
+  double evaluate_stiffness(std::size_t flat, const EvaluationContext& context) const {
+    return cached_stiffness_.empty() ? evaluate_stiffness_uncached(flat, context) : cached_stiffness_[flat];
+  }
+
+  double evaluate_damping(std::size_t flat, const EvaluationContext& context) const {
+    return cached_damping_.empty() ? evaluate_damping_uncached(flat, context) : cached_damping_[flat];
+  }
+
+  double evaluate_dispersion(std::size_t flat, const EvaluationContext& context) const {
+    return cached_dispersion_.empty() ? evaluate_dispersion_uncached(flat, context) : cached_dispersion_[flat];
   }
 
   double boundary_ghost_value(
@@ -779,61 +975,94 @@ class RuntimeSolver final : public ISolver {
     return result;
   }
 
-  EvaluationContext build_context(std::size_t flat, std::size_t component, long double t) const {
-    const std::vector<std::size_t> index = grid_.unravel_index(flat);
-
+  EvaluationContext build_context(
+      std::size_t flat,
+      std::size_t component,
+      long double t,
+      const ExpressionRequirements& requirements) const {
     EvaluationContext context;
-    context.x.resize(grid_.dims(), 0.0L);
-    context.t = t;
-    context.u.resize(problem_.field_components, 0.0L);
-
-    for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
-      context.x[axis] = static_cast<long double>(grid_.origin()[axis] + index[axis] * grid_.spacing()[axis]);
+    if (requirements.needs_position) {
+      context.x.assign(coordinates_for_flat(flat).begin(), coordinates_for_flat(flat).end());
     }
-
-    for (std::size_t comp = 0; comp < problem_.field_components; ++comp) {
-      context.u[comp] = current_.at_flat(flat, comp);
-      for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
-        const double derivative = directional_gradient(current_, flat, comp, axis);
-        context.derivatives.emplace("du" + std::to_string(comp) + "_dx" + std::to_string(axis), derivative);
+    if (requirements.needs_time) {
+      context.t = t;
+    }
+    if (requirements.needs_field || requirements.needs_derivatives) {
+      context.u.resize(problem_.field_components, 0.0L);
+      for (std::size_t comp = 0; comp < problem_.field_components; ++comp) {
+        context.u[comp] = current_.at_flat(flat, comp);
       }
     }
-
-    context.extra.emplace("component", static_cast<long double>(component));
+    if (requirements.needs_derivatives) {
+      context.derivatives.reserve(problem_.field_components * grid_.dims());
+      for (std::size_t comp = 0; comp < problem_.field_components; ++comp) {
+        for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
+          const double derivative = directional_gradient(current_, flat, comp, axis);
+          context.derivatives.emplace("du" + std::to_string(comp) + "_dx" + std::to_string(axis), derivative);
+        }
+      }
+    }
+    if (requirements.needs_component) {
+      context.extra.reserve(1);
+      context.extra.emplace("component", static_cast<long double>(component));
+    }
     return context;
   }
 
-  EvaluationContext coefficient_context(std::size_t flat) const {
-    const std::vector<std::size_t> index = grid_.unravel_index(flat);
+  double evaluate_source(std::size_t flat, std::size_t component, long double t) const {
+    if (source_expr_.bytecode().empty()) {
+      return 0.0;
+    }
+    const EvaluationContext context = build_context(flat, component, t, source_requirements_);
+    return source_expr_.evaluate_double(context);
+  }
 
-    EvaluationContext context;
-    context.x.resize(grid_.dims(), 0.0L);
-    context.t = 0.0L;
-    context.u.resize(problem_.field_components, 0.0L);
+  void populate_dynamic_coefficients(
+      std::size_t flat,
+      std::size_t component,
+      long double t,
+      double& density,
+      double& stiffness,
+      double& damping,
+      double& dispersion) const {
+    density = cached_density_.empty() ? 0.0 : cached_density_[flat];
+    stiffness = cached_stiffness_.empty() ? 0.0 : cached_stiffness_[flat];
+    damping = cached_damping_.empty() ? 0.0 : cached_damping_[flat];
+    dispersion = cached_dispersion_.empty() ? 0.0 : cached_dispersion_[flat];
 
-    for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
-      context.x[axis] = static_cast<long double>(grid_.origin()[axis] + index[axis] * grid_.spacing()[axis]);
+    if (!cached_density_.empty() && !cached_stiffness_.empty() && !cached_damping_.empty() && !cached_dispersion_.empty()) {
+      return;
     }
 
-    for (std::size_t comp = 0; comp < problem_.field_components; ++comp) {
-      for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
-        context.derivatives.emplace("du" + std::to_string(comp) + "_dx" + std::to_string(axis), 0.0L);
-      }
+    const EvaluationContext context = build_context(flat, component, t, dynamic_coefficient_requirements_);
+    if (cached_density_.empty()) {
+      density = evaluate_density_uncached(flat, context);
     }
-    context.extra.emplace("component", 0.0L);
-    return context;
+    if (cached_stiffness_.empty()) {
+      stiffness = evaluate_stiffness_uncached(flat, context);
+    }
+    if (cached_damping_.empty()) {
+      damping = evaluate_damping_uncached(flat, context);
+    }
+    if (cached_dispersion_.empty()) {
+      dispersion = evaluate_dispersion_uncached(flat, context);
+    }
   }
 
   void update_cell(std::size_t flat, std::size_t component) {
     const double current = current_.at_flat(flat, component);
     const double previous = previous_.at_flat(flat, component);
-    const EvaluationContext context = build_context(flat, component, static_cast<long double>(step_count_) * dt_);
+    const long double time = static_cast<long double>(step_count_) * dt_;
+    double density = 0.0;
+    double stiffness = 0.0;
+    double damping = 0.0;
+    double dispersion = 0.0;
+    populate_dynamic_coefficients(flat, component, time, density, stiffness, damping, dispersion);
 
-    const double density = positive_or_floor(evaluate_density(context), 1.0e-12);
-    const double stiffness = positive_or_floor(evaluate_stiffness(context), 1.0e-12);
-    const double damping = std::max(0.0, evaluate_damping(context));
-    const double dispersion = evaluate_dispersion(context);
-    const double source = source_expr_.evaluate_double(context);
+    density = positive_or_floor(density, 1.0e-12);
+    stiffness = positive_or_floor(stiffness, 1.0e-12);
+    damping = std::max(0.0, damping);
+    const double source = evaluate_source(flat, component, time);
 
     const double c2 = stiffness / density;
     const double velocity = (current - previous) / dt_;
@@ -997,6 +1226,18 @@ class RuntimeSolver final : public ISolver {
   CompiledExpression dispersion_expr_;
   CompiledExpression source_expr_;
   std::vector<CompiledGeometryRegion> geometry_regions_;
+  std::vector<long double> coordinate_cache_;
+  std::vector<int> region_index_cache_;
+  std::vector<double> cached_density_;
+  std::vector<double> cached_stiffness_;
+  std::vector<double> cached_damping_;
+  std::vector<double> cached_dispersion_;
+  ExpressionRequirements source_requirements_;
+  ExpressionRequirements dynamic_coefficient_requirements_;
+  bool density_static_ = false;
+  bool stiffness_static_ = false;
+  bool damping_static_ = false;
+  bool dispersion_static_ = false;
 
   ExecutionBackend active_backend_ = ExecutionBackend::ThreadedCPU;
   std::vector<ProbeSample> probe_samples_;

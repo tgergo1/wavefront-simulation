@@ -8,6 +8,8 @@
 
 namespace wavefront {
 
+inline constexpr std::size_t kParallelMinItemsPerThread = 1024;
+
 inline std::size_t normalized_thread_count(std::size_t requested) {
   const std::size_t hw = std::max<std::size_t>(1, std::thread::hardware_concurrency());
   if (requested == 0) {
@@ -31,6 +33,11 @@ void deterministic_parallel_for(
     thread_count = normalized_thread_count(0);
   }
   thread_count = std::max<std::size_t>(1, std::min(thread_count, total_items));
+  if (thread_count > 1) {
+    const std::size_t max_useful_threads =
+        std::max<std::size_t>(1, total_items / kParallelMinItemsPerThread);
+    thread_count = std::min(thread_count, max_useful_threads);
+  }
 
   if (thread_count == 1) {
     fn(0, total_items);
