@@ -64,19 +64,22 @@ def blend(c0: RGB, c1: RGB, alpha: float) -> RGB:
 
 
 def color_for(v: float) -> RGB:
-    """Diverging map: blue (negative) -> white -> red (positive)."""
+    """Scientific diverging map: deep blue -> pale neutral -> warm red."""
     n = clamp(v, -1.0, 1.0)
-    if n < 0.0:
-        t = n + 1.0
-        r = int(255 * t)
-        g = int(255 * t)
-        b = 255
-    else:
-        t = 1.0 - n
-        r = 255
-        g = int(255 * t)
-        b = int(255 * t)
-    return r, g, b
+    anchors: List[Tuple[float, RGB]] = [
+        (-1.0, (23, 43, 109)),
+        (-0.45, (68, 143, 204)),
+        (0.0, (246, 244, 239)),
+        (0.45, (236, 146, 75)),
+        (1.0, (148, 34, 49)),
+    ]
+    for idx in range(len(anchors) - 1):
+        left_n, left_c = anchors[idx]
+        right_n, right_c = anchors[idx + 1]
+        if left_n <= n <= right_n:
+            alpha = (n - left_n) / max(1.0e-12, right_n - left_n)
+            return blend(left_c, right_c, alpha)
+    return anchors[0][1] if n < 0.0 else anchors[-1][1]
 
 
 def _chunk(kind: bytes, payload: bytes) -> bytes:
@@ -543,6 +546,12 @@ def l2_difference(lhs: Field2D, rhs: Field2D) -> float:
     return math.sqrt(accum / max(1, count))
 
 
+def subtract_fields(lhs: Field2D, rhs: Field2D) -> Field2D:
+    if len(lhs) != len(rhs) or len(lhs[0]) != len(rhs[0]):
+        raise ValueError("Field shape mismatch in subtract_fields")
+    return [[lhs[y][x] - rhs[y][x] for x in range(len(lhs[0]))] for y in range(len(lhs))]
+
+
 def demean_field(field: Field2D) -> Field2D:
     ny = len(field)
     nx = len(field[0]) if ny > 0 else 0
@@ -550,6 +559,38 @@ def demean_field(field: Field2D) -> Field2D:
         return field
     mean = sum(value for row in field for value in row) / float(nx * ny)
     return [[value - mean for value in row] for row in field]
+
+
+def accumulate_energy_field(
+    accumulated: Field2D,
+    field: Field2D,
+    *,
+    x_start: int = 0,
+) -> Field2D:
+    ny = len(field)
+    nx = len(field[0]) if ny > 0 else 0
+    if not accumulated:
+        accumulated = [[0.0 for _ in range(nx)] for _ in range(ny)]
+
+    out: Field2D = []
+    for y in range(ny):
+        row: List[float] = []
+        for x in range(nx):
+            prior = accumulated[y][x]
+            if x >= x_start:
+                value = field[y][x]
+                prior += value * value
+            row.append(prior)
+        out.append(row)
+    return out
+
+
+def log_positive_field(field: Field2D) -> Field2D:
+    peak = max((max(row) for row in field if row), default=0.0)
+    if peak <= 0.0:
+        return [[0.0 for _ in row] for row in field]
+    scale = math.log1p(peak)
+    return [[math.log1p(max(0.0, value)) / scale for value in row] for row in field]
 
 
 def render_frame(
@@ -887,7 +928,7 @@ def generate_gif(
     return output
 
 
-def scenario_modes_evolution() -> Path:
+def simulate_modes_frames() -> tuple[List[List[Field2D]], float, float]:
     nx = 44
     ny = 44
     frames = 68
@@ -922,6 +963,11 @@ def scenario_modes_evolution() -> Path:
     final_linear, final_nonlinear, final_micro = frames_data[-1]
     linear_vs_nonlinear = l2_difference(final_linear, final_nonlinear)
     linear_vs_micro = l2_difference(final_linear, final_micro)
+    return frames_data, linear_vs_nonlinear, linear_vs_micro
+
+
+def scenario_modes_evolution() -> Path:
+    frames_data, linear_vs_nonlinear, linear_vs_micro = simulate_modes_frames()
     if linear_vs_nonlinear < 5.0e-4 or linear_vs_micro < 5.0e-4:
         raise RuntimeError(
             "Mode demo invalid: interchangeable modes are not producing meaningfully distinct wavefields."
@@ -937,6 +983,46 @@ def scenario_modes_evolution() -> Path:
         fps=12,
         layout=Layout(cell=5),
         stripe_colors=[(21, 82, 161), (222, 121, 33), (56, 131, 84)],
+    )
+
+
+def scenario_mode_residuals() -> Path:
+    frames_data, linear_vs_nonlinear, linear_vs_micro = simulate_modes_frames()
+    residual_frames: List[List[Field2D]] = []
+    for linear, nonlinear, micro in frames_data:
+        residual_frames.append(
+            [
+                subtract_fields(nonlinear, linear),
+                subtract_fields(micro, linear),
+            ]
+        )
+
+    final_nonlinear_residual, final_micro_residual = residual_frames[-1]
+    nonlinear_residual_rms = math.sqrt(
+        sum(value * value for row in final_nonlinear_residual for value in row)
+        / max(1, len(final_nonlinear_residual) * len(final_nonlinear_residual[0]))
+    )
+    micro_residual_rms = math.sqrt(
+        sum(value * value for row in final_micro_residual for value in row)
+        / max(1, len(final_micro_residual) * len(final_micro_residual[0]))
+    )
+    if nonlinear_residual_rms < 5.0e-4 or micro_residual_rms < 5.0e-4:
+        raise RuntimeError(
+            "Mode residual demo invalid: residual panels stayed too close to zero."
+        )
+    VALIDATION_SUMMARY["mode_residuals"] = {
+        "linear_vs_nonlinear_l2": linear_vs_nonlinear,
+        "linear_vs_micro_l2": linear_vs_micro,
+        "nonlinear_residual_rms": nonlinear_residual_rms,
+        "micro_residual_rms": micro_residual_rms,
+    }
+
+    return generate_gif(
+        "wavefield-mode-residuals.gif",
+        frame_panels=residual_frames,
+        fps=12,
+        layout=Layout(cell=5),
+        stripe_colors=[(222, 121, 33), (56, 131, 84)],
     )
 
 
@@ -1122,6 +1208,7 @@ def scenario_double_slit() -> Path:
                     overlay[y][x] = 1
 
     frames_data: List[List[Field2D]] = []
+    accumulated_intensity: Field2D = [[0.0 for _ in range(nx)] for _ in range(ny)]
     early_right_rms = 0.0
     slit_to_blocked_ratio = 0.0
     screen_peak_count = 0
@@ -1139,7 +1226,8 @@ def scenario_double_slit() -> Path:
     for _ in range(frames):
         solver.run(steps_per_frame)
         panel = sample_field(solver, nx, ny)
-        frames_data.append([panel])
+        accumulated_intensity = accumulate_energy_field(accumulated_intensity, panel, x_start=int(0.50 * nx))
+        frames_data.append([panel, log_positive_field(accumulated_intensity)])
 
         if len(frames_data) == 15:
             early_right_rms = rms_region(panel, int(0.86 * nx), nx, 0, ny)
@@ -1178,8 +1266,8 @@ def scenario_double_slit() -> Path:
         frame_panels=frames_data,
         fps=12,
         layout=Layout(cell=5),
-        stripe_colors=[(119, 42, 146)],
-        overlays=[overlay],
+        stripe_colors=[(119, 42, 146), (181, 96, 31)],
+        overlays=[overlay, overlay],
     )
 
 
@@ -1633,6 +1721,7 @@ def main() -> None:
 
     outputs = [
         scenario_modes_evolution(),
+        scenario_mode_residuals(),
         scenario_interface_reflection(),
         scenario_boundary_comparison(),
         scenario_double_slit(),

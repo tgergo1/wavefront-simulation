@@ -14,25 +14,34 @@ Left to right: `LinearApprox`, `NonlinearContinuum`, `MicroSurrogate`.
 
 ![Wavefield mode evolution](docs/assets/wavefield-modes-evolution.gif)
 
-### 2) Interface Reflection / Transmission Example
+### 2) Mode Residual Maps
+
+Linear baseline subtracted from the higher-physics modes to highlight where
+`NonlinearContinuum` and `MicroSurrogate` depart from the same initial-value problem.
+
+![Mode residual maps](docs/assets/wavefield-mode-residuals.gif)
+
+### 3) Interface Reflection / Transmission Example
 
 Single linear solver with a smooth impedance jump in `x_0`, showing reflected and transmitted fronts.
 
 ![Interface reflection transmission](docs/assets/wavefield-interface-reflection.gif)
 
-### 3) Boundary Behavior Example
+### 4) Boundary Behavior Example
 
 Left: periodic boundaries (re-entering energy). Right: PML boundaries (absorbing edges).
 
 ![Boundary comparison periodic vs pml](docs/assets/wavefield-boundary-comparison.gif)
 
-### 4) Double-Slit Experiment
+### 5) Double-Slit Experiment
 
-Single source on the left, opaque wall in the middle (dark gray) with two open slits (cyan), and downstream interference fringes behind the slits.
+Left: instantaneous field from a single source on the left with an opaque wall in the middle
+(dark gray) and two open slits (cyan). Right: log-integrated downstream intensity, exposing
+the interference fringe pattern that builds up behind the slits.
 
 ![Double slit experiment](docs/assets/wavefield-double-slit.gif)
 
-### 5) Longitudinal Wave (Compressional / P-wave) Example
+### 6) Longitudinal Wave (Compressional / P-wave) Example
 
 Left: longitudinal 2-component displacement field rendered as its divergence
 (`∇·u`), exposing alternating compression and rarefaction bands.
@@ -40,13 +49,13 @@ Right: transverse scalar wave under the same source and medium, for comparison.
 
 ![Longitudinal wave divergence vs transverse comparison](docs/assets/wavefield-longitudinal.gif)
 
-### 6) 3D Wavefield (Volumetric Perspective)
+### 7) 3D Wavefield (Volumetric Perspective)
 
 Full 3D simulation rendered as a perspective volume (not slice planes), with a rotating camera to show depth.
 
 ![3d wave volume](docs/assets/wavefield-3d-volume.gif)
 
-### 7) 4D Wavefield (Hyperslice Grid)
+### 8) 4D Wavefield (Hyperslice Grid)
 
 A 4-D acoustic wave launched from a point source at the centre of [0,1]⁴.  
 Because wave fronts in 4-D expand as a 3-sphere (the surface of a 4-ball),
@@ -62,7 +71,7 @@ The 3 × 3 grid visualises this directly:
 
 ![4D hyperslice grid](docs/assets/wavefield-4d-hyperslice.gif)
 
-### 8) Monitor / Spectrum / Far-Field Analysis
+### 9) Monitor / Spectrum / Far-Field Analysis
 
 Left: full-field magnitude snapshot from `field_snapshot()`. Middle: probe spectrum from
 `probe_spectrum()`. Right: near-to-far angular response from `far_field_pattern()`, with
