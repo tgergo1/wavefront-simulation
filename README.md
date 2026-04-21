@@ -73,11 +73,17 @@ Note: GIF export requires `ffmpeg` on `PATH`.
 ## Features
 
 - Runtime interchangeable modes: `LinearApprox`, `NonlinearContinuum`, `MicroSurrogate`
+- Solver families: `TimeDomain`, `FrequencyDomain`, `AngularSpectrum`
 - Wave families: transverse scalar propagation and longitudinal vector propagation
 - Compile-time solver API: `SolverND<N, Scalar, Mode>`
 - N-D Cartesian domains and configurable spatial order (2nd / 4th)
 - Boundary operators: Dirichlet, Neumann, Robin, Periodic, Impedance, PML
 - Interface physics helpers for reflection/refraction/mode-conversion calculations
+- Geometry/material regions: box, sphere, and layered overrides on top of symbolic background media
+- Result APIs: full-field snapshots, probe histories/spectra, surface flux monitors, far-field patterns
+- Bulk data I/O: CSV field export plus checkpoint save/load
+- Complex phasor snapshots and backend-selection diagnostics
+- Built-in material presets, parameter sweeps, finite-difference gradients, and plotting helpers
 - Symbolic expression parser/compiler for medium and source terms
 - Exact-reference infrastructure with `limitless` in `ExactReference` mode
 - CMake package export and pybind11 Python module
