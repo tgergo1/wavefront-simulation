@@ -3,7 +3,7 @@
 This project uses two validation layers:
 
 1. C++ test suite (`ctest`) for solver correctness, invariants, benchmarks, and API parity.
-2. Visualization-scenario gates in `/Users/gergely.toth/Work/wavefront-simulation/examples/generate_readme_gifs.py`, which fail GIF generation if physical checks are not met.
+2. Visualization-scenario gates in `examples/generate_readme_gifs.py`, which fail GIF generation if physical checks are not met.
 
 ## CI/CTest Gates
 
@@ -24,12 +24,13 @@ The README GIF pipeline validates:
 - Double-slit case: early far-right phantom energy must stay below threshold; near-wall slit transmission must dominate blocked transmission; far screen must show multiple fringes.
 - Longitudinal case: divergence-field RMS must remain nontrivial and the longitudinal divergence visualisation must stay measurably distinct from the transverse comparison field.
 - 3D volume case: axis isotropy spread in homogeneous medium must remain bounded; mid-frame active-voxel support must exceed minimum.
+- Monitor-analysis case: geometry-aware monitored runs must produce nontrivial probe spectra, nonzero far-field amplitudes, and nonzero transmitted surface flux.
 
 ## Latest Metrics Artifact
 
 Latest generated metrics:
 
-- `/Users/gergely.toth/Work/wavefront-simulation/docs/assets/_checks/validation-metrics.json`
+- `docs/assets/_checks/validation-metrics.json`
 
 Regenerate and revalidate with:
 
