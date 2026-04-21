@@ -129,7 +129,7 @@ python -m build
 
 ## License
 
-GPL-3.0-only (aligned with `limitless`). See `LICENSE`.
+GPL-3.0-only. See `LICENSE`.
 
 ## Documentation
 
