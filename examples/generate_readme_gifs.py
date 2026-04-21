@@ -1512,10 +1512,10 @@ def scenario_longitudinal_wave() -> Path:
 
 
 def scenario_monitor_analysis() -> Path:
-    nx = 54
-    ny = 42
-    frames = 56
-    steps_per_frame = 4
+    nx = 36
+    ny = 28
+    frames = 20
+    steps_per_frame = 3
 
     problem = make_problem(
         nx,
@@ -1535,9 +1535,9 @@ def scenario_monitor_analysis() -> Path:
     layer.lower = 0.54
     layer.upper = 0.76
     layer.medium = wf.MediumLaw()
-    layer.medium.density = wf.SymbolicExpr("2500.0")
-    layer.medium.stiffness = wf.SymbolicExpr("7.0e10")
-    layer.medium.damping = wf.SymbolicExpr("0.0005")
+    layer.medium.density = wf.SymbolicExpr("1.8")
+    layer.medium.stiffness = wf.SymbolicExpr("3.4")
+    layer.medium.damping = wf.SymbolicExpr("0.002")
     layer.medium.dispersion = wf.SymbolicExpr("0.0")
     problem.geometry = [layer]
 
@@ -1567,7 +1567,7 @@ def scenario_monitor_analysis() -> Path:
     config.far_field_samples = nx
 
     solver = wf.Solver(problem, config)
-    solver.run(72)
+    solver.run(24)
 
     frames_data: List[List[Field2D]] = []
     for _ in range(frames):
