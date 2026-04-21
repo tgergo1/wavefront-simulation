@@ -1,30 +1,42 @@
 {
   "boundary_comparison": {
-    "early_periodic_right_rms": 0.005877179647315727,
-    "early_pml_right_rms": 5.258902777379405e-25,
-    "late_periodic_right_rms": 0.014673915876698689,
-    "late_pml_right_rms": 0.004611034723423863,
+    "early_periodic_right_rms": 0.005877179647315761,
+    "early_pml_right_rms": 5.2589027773794175e-25,
+    "late_periodic_right_rms": 0.01467391587669882,
+    "late_pml_right_rms": 0.0046110347234238685,
     "periodic_absorbed_energy": 0.0,
     "pml_absorbed_energy": 1.22726
   },
   "double_slit": {
-    "early_far_right_rms": 1.9372365159492007e-49,
-    "screen_max_abs": 0.00033881782340119927,
+    "early_far_right_rms": 1.937236515949214e-49,
+    "screen_max_abs": 0.00033881782340119244,
     "screen_peak_count": 7,
-    "slit_to_blocked_ratio": 2.7769820130371836
+    "slit_to_blocked_ratio": 2.7769820130371694
+  },
+  "hyperslice_4d": {
+    "center_panel_peak": 0.0010853192486062,
+    "center_to_corner_ratio": 2.1862554077552017,
+    "corner_panel_peak": 0.0004964283883558607,
+    "isotropy_spread_4d": 0.20834192362668033
   },
   "interface_reflection": {
-    "reflected_rms": 0.01553559955999996,
-    "transmitted_rms": 0.01276591661706834
+    "reflected_rms": 0.015535599559999906,
+    "transmitted_rms": 0.012765916617068383
   },
   "longitudinal_wave": {
     "divergence_rms": 0.04786994319629239,
     "longitudinal_vs_transverse_l2": 0.048122709730432055,
     "transverse_rms": 0.004925822792504398
   },
+  "mode_residuals": {
+    "linear_vs_micro_l2": 0.053903433174428445,
+    "linear_vs_nonlinear_l2": 0.00108514561528629,
+    "micro_residual_rms": 0.05390343317442842,
+    "nonlinear_residual_rms": 0.0010851456152862918
+  },
   "modes_evolution": {
-    "linear_vs_micro_l2": 0.05390343317442829,
-    "linear_vs_nonlinear_l2": 0.001085145615286114
+    "linear_vs_micro_l2": 0.053903433174428445,
+    "linear_vs_nonlinear_l2": 0.00108514561528629
   },
   "monitor_analysis": {
     "peak_far_field_amplitude": 2.3171386339923574e+35,
@@ -35,7 +47,7 @@
   },
   "volume_3d": {
     "active_voxels_midframe": 13800,
-    "isotropy_spread": 2.2834884027783794e-15,
-    "scale": 0.001351914727203134
+    "isotropy_spread": 5.784837287038563e-15,
+    "scale": 0.0013519147272031328
   }
 }
