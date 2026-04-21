@@ -8,6 +8,8 @@
 
 namespace wavefront {
 
+// Small 1-D and benchmark-sized workloads spend more time spawning threads than
+// doing useful work, so keep those partitions serial.
 inline constexpr std::size_t kParallelMinItemsPerThread = 1024;
 
 inline std::size_t normalized_thread_count(std::size_t requested) {

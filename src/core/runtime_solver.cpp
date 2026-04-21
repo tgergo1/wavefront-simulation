@@ -135,8 +135,8 @@ bool is_prefixed_index_variable(std::string_view name, std::string_view prefix) 
   if (!name.starts_with(prefix) || name.size() <= prefix.size()) {
     return false;
   }
-  return std::all_of(name.begin() + static_cast<std::ptrdiff_t>(prefix.size()), name.end(), [](char c) {
-    return std::isdigit(static_cast<unsigned char>(c)) != 0;
+  return std::all_of(name.begin() + static_cast<std::ptrdiff_t>(prefix.size()), name.end(), [](char ch) {
+    return std::isdigit(static_cast<unsigned char>(ch)) != 0;
   });
 }
 
@@ -167,6 +167,8 @@ ExpressionRequirements analyze_expression_requirements(const CompiledExpression&
       requirements.needs_derivatives = true;
       continue;
     }
+    // Keep unknown variables on the conservative path so they still receive
+    // spatial context instead of being misclassified as constants.
     requirements.needs_position = true;
   }
   return requirements;
@@ -994,7 +996,7 @@ class RuntimeSolver final : public ISolver {
       }
     }
     if (requirements.needs_derivatives) {
-      context.derivatives.reserve(problem_.field_components * grid_.dims());
+      context.derivatives.rehash(problem_.field_components * grid_.dims());
       for (std::size_t comp = 0; comp < problem_.field_components; ++comp) {
         for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
           const double derivative = directional_gradient(current_, flat, comp, axis);
@@ -1017,6 +1019,11 @@ class RuntimeSolver final : public ISolver {
     return source_expr_.evaluate_double(context);
   }
 
+  bool all_coefficients_cached() const {
+    return !cached_density_.empty() && !cached_stiffness_.empty() && !cached_damping_.empty() &&
+           !cached_dispersion_.empty();
+  }
+
   void populate_dynamic_coefficients(
       std::size_t flat,
       std::size_t component,
@@ -1030,7 +1037,7 @@ class RuntimeSolver final : public ISolver {
     damping = cached_damping_.empty() ? 0.0 : cached_damping_[flat];
     dispersion = cached_dispersion_.empty() ? 0.0 : cached_dispersion_[flat];
 
-    if (!cached_density_.empty() && !cached_stiffness_.empty() && !cached_damping_.empty() && !cached_dispersion_.empty()) {
+    if (all_coefficients_cached()) {
       return;
     }
 
