@@ -74,6 +74,11 @@ BITMAP_FONT = {
     "Y": ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
 }
 
+BT709_LUMINANCE = (0.2126, 0.7152, 0.0722)
+LIGHT_TEXT = (248, 250, 252)
+DARK_TEXT = (31, 41, 55)
+TEXT_LUMINANCE_THRESHOLD = 145.0
+
 
 def clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
@@ -651,8 +656,13 @@ def text_width(text: str, scale: int = 1) -> int:
 
 
 def text_color_for(background: RGB) -> RGB:
-    luminance = 0.2126 * background[0] + 0.7152 * background[1] + 0.0722 * background[2]
-    return (248, 250, 252) if luminance < 145.0 else (31, 41, 55)
+    # ITU-R BT.709 coefficients keep title text legible across the stripe palette.
+    luminance = (
+        BT709_LUMINANCE[0] * background[0]
+        + BT709_LUMINANCE[1] * background[1]
+        + BT709_LUMINANCE[2] * background[2]
+    )
+    return LIGHT_TEXT if luminance < TEXT_LUMINANCE_THRESHOLD else DARK_TEXT
 
 
 def render_frame(
