@@ -1,6 +1,7 @@
 #include "runtime_solver.hpp"
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <cmath>
 #include <cstddef>
@@ -136,7 +137,7 @@ bool is_prefixed_index_variable(std::string_view name, std::string_view prefix) 
     return false;
   }
   return std::all_of(name.begin() + static_cast<std::ptrdiff_t>(prefix.size()), name.end(), [](char ch) {
-    return std::isdigit(static_cast<unsigned char>(ch)) != 0;
+    return std::isdigit(static_cast<unsigned char>(ch));
   });
 }
 
@@ -646,7 +647,8 @@ class RuntimeSolver final : public ISolver {
         coordinates[axis] = static_cast<long double>(grid_.origin()[axis] + index[axis] * grid_.spacing()[axis]);
       }
 
-      for (std::size_t region_index = geometry_regions_.size(); region_index-- > 0;) {
+      for (std::size_t offset = 0; offset < geometry_regions_.size(); ++offset) {
+        const std::size_t region_index = geometry_regions_.size() - 1 - offset;
         if (contains_region(geometry_regions_[region_index].spec, coordinates)) {
           region_index_cache_[flat] = static_cast<int>(region_index);
           break;
@@ -750,10 +752,12 @@ class RuntimeSolver final : public ISolver {
   }
 
   std::span<long double> coordinates_for_flat(std::size_t flat) {
+    assert(flat < grid_.total_points());
     return {coordinate_cache_.data() + flat * grid_.dims(), grid_.dims()};
   }
 
   std::span<const long double> coordinates_for_flat(std::size_t flat) const {
+    assert(flat < grid_.total_points());
     return {coordinate_cache_.data() + flat * grid_.dims(), grid_.dims()};
   }
 
@@ -996,7 +1000,7 @@ class RuntimeSolver final : public ISolver {
       }
     }
     if (requirements.needs_derivatives) {
-      context.derivatives.rehash(problem_.field_components * grid_.dims());
+      context.derivatives.reserve(problem_.field_components * grid_.dims());
       for (std::size_t comp = 0; comp < problem_.field_components; ++comp) {
         for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
           const double derivative = directional_gradient(current_, flat, comp, axis);
