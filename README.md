@@ -109,6 +109,8 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
+Single-config generators now default to `RelWithDebInfo` so local builds are optimized unless you explicitly choose another build type.
+
 ## Python wheel build
 
 ```bash
@@ -123,6 +125,7 @@ GPL-3.0-only (aligned with `limitless`). See `LICENSE`.
 ## Documentation
 
 - `docs/API_REFERENCE.md`
+- `docs/PERFORMANCE_REPORT.md`
 - `docs/MATHEMATICAL_DERIVATIONS.md`
 - `docs/VALIDATION_REPORT.md`
 - `docs/tutorial_nd_setup.md`

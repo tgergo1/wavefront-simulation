@@ -1,9 +1,11 @@
 /build/
+/build-*/
 /build_cov/
 /.cache/
 /.venv/
 /_codeql_build_dir/
 /_codeql_detected_source_root
+gmon.out
 __pycache__/
 *.pyc
 *.pyo

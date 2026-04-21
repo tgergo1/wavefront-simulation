@@ -7,6 +7,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
+endif()
+
 option(WAVEFRONT_BUILD_TESTS "Build unit/integration tests" ON)
 option(WAVEFRONT_BUILD_PYTHON "Build Python bindings" ON)
 option(WAVEFRONT_ENABLE_EXACT "Enable exact-reference arithmetic support" ON)
