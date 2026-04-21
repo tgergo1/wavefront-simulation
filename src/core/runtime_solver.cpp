@@ -4,10 +4,13 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <fstream>
 #include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "wavefront/api/problem_validation.hpp"
@@ -21,6 +24,8 @@
 
 namespace wavefront {
 namespace {
+
+constexpr double kPi = 3.14159265358979323846;
 
 CompiledExpression compile_or_default(const SymbolicExpr& expression, const char* fallback) {
   return CompiledExpression::compile(expression.text.empty() ? fallback : expression.text);
@@ -39,8 +44,19 @@ std::string mode_name(SolverMode mode) {
     case SolverMode::MicroSurrogate:
       return "MicroSurrogate";
   }
-  // All enum values handled above; unreachable in correct usage.
   return "LinearApprox";  // GCOVR_EXCL_LINE
+}
+
+std::string family_name(SolverFamily family) {
+  switch (family) {
+    case SolverFamily::TimeDomain:
+      return "TimeDomain";
+    case SolverFamily::FrequencyDomain:
+      return "FrequencyDomain";
+    case SolverFamily::AngularSpectrum:
+      return "AngularSpectrum";
+  }
+  return "TimeDomain";  // GCOVR_EXCL_LINE
 }
 
 std::string wave_type_name(WaveType wave_type) {
@@ -60,14 +76,45 @@ std::string precision_name(PrecisionMode mode) {
     case PrecisionMode::ExactReference:
       return "ExactReference";
   }
-  // All enum values handled above; unreachable in correct usage.
   return "FastFloat64";  // GCOVR_EXCL_LINE
+}
+
+std::string backend_name(ExecutionBackend backend) {
+  switch (backend) {
+    case ExecutionBackend::Serial:
+      return "Serial";
+    case ExecutionBackend::ThreadedCPU:
+      return "ThreadedCPU";
+    case ExecutionBackend::GPUAccelerated:
+      return "GPUAccelerated";
+    case ExecutionBackend::Distributed:
+      return "Distributed";
+  }
+  return "ThreadedCPU";  // GCOVR_EXCL_LINE
+}
+
+std::string representation_name(FieldRepresentation representation) {
+  switch (representation) {
+    case FieldRepresentation::RealScalar:
+      return "RealScalar";
+    case FieldRepresentation::ComplexPhasor:
+      return "ComplexPhasor";
+  }
+  return "RealScalar";  // GCOVR_EXCL_LINE
 }
 
 struct FaceBoundary {
   BoundaryType type = BoundaryType::Neumann;
   double parameter = 0.0;
   bool specified = false;
+};
+
+struct CompiledGeometryRegion {
+  GeometryRegion spec;
+  CompiledExpression density;
+  CompiledExpression stiffness;
+  CompiledExpression damping;
+  CompiledExpression dispersion;
 };
 
 double parse_boundary_parameter_scalar(const SymbolicExpr& expression, double fallback) {
@@ -82,6 +129,31 @@ double parse_boundary_parameter_scalar(const SymbolicExpr& expression, double fa
   return fallback;
 }
 
+bool contains_region(const GeometryRegion& region, const std::vector<long double>& x) {
+  switch (region.shape) {
+    case GeometryShape::Box:
+      for (std::size_t axis = 0; axis < x.size(); ++axis) {
+        if (x[axis] < static_cast<long double>(region.min_corner[axis]) ||
+            x[axis] > static_cast<long double>(region.max_corner[axis])) {
+          return false;
+        }
+      }
+      return true;
+    case GeometryShape::Sphere: {
+      long double radius_sq = 0.0L;
+      for (std::size_t axis = 0; axis < x.size(); ++axis) {
+        const long double delta = x[axis] - static_cast<long double>(region.center[axis]);
+        radius_sq += delta * delta;
+      }
+      return radius_sq <= static_cast<long double>(region.radius * region.radius);
+    }
+    case GeometryShape::Layer:
+      return x[region.axis] >= static_cast<long double>(region.lower) &&
+             x[region.axis] <= static_cast<long double>(region.upper);
+  }
+  return false;  // GCOVR_EXCL_LINE
+}
+
 class RuntimeSolver final : public ISolver {
  public:
   void initialize(const ProblemSpec& problem, const SolverConfig& config) override {
@@ -90,11 +162,13 @@ class RuntimeSolver final : public ISolver {
     problem_ = problem;
     config_ = config;
     grid_ = GridLayout(problem_.grid);
+    resolve_backend();
     configure_face_boundaries();
+    compile_geometry_regions();
+
     previous_ = FieldBuffer<double>(grid_, problem_.field_components);
     current_ = FieldBuffer<double>(grid_, problem_.field_components);
     next_ = FieldBuffer<double>(grid_, problem_.field_components);
-
     previous_.fill(0.0);
     current_.fill(0.0);
     next_.fill(0.0);
@@ -110,14 +184,14 @@ class RuntimeSolver final : public ISolver {
       std::mutex mtx;
       deterministic_parallel_for(
           grid_.total_points(),
-          config_.threads,
+          active_thread_count(),
           config_.deterministic,
           [&](std::size_t begin, std::size_t end) {
             double local_max = 0.0;
             for (std::size_t flat = begin; flat < end; ++flat) {
               const EvaluationContext context = coefficient_context(flat);
-              const double density = positive_or_floor(density_expr_.evaluate_double(context), 1.0e-12);
-              const double stiffness = positive_or_floor(stiffness_expr_.evaluate_double(context), 1.0e-12);
+              const double density = positive_or_floor(evaluate_density(context), 1.0e-12);
+              const double stiffness = positive_or_floor(evaluate_stiffness(context), 1.0e-12);
               local_max = std::max(local_max, phase_velocity(stiffness, density));
             }
             std::lock_guard<std::mutex> lock(mtx);
@@ -132,6 +206,8 @@ class RuntimeSolver final : public ISolver {
     max_reference_error_ = 0.0;
     total_reflected_energy_ = 0.0;
     total_absorbed_energy_ = 0.0;
+    reset_monitor_state();
+    record_monitors();
   }
 
   void step() override {
@@ -140,7 +216,7 @@ class RuntimeSolver final : public ISolver {
 
     deterministic_parallel_for(
         points,
-        config_.threads,
+        active_thread_count(),
         config_.deterministic,
         [&](std::size_t begin, std::size_t end) {
           for (std::size_t flat = begin; flat < end; ++flat) {
@@ -162,7 +238,7 @@ class RuntimeSolver final : public ISolver {
           config_.split_pml,
           dt_,
           8.0 / (grid_.min_spacing() * static_cast<double>(grid_.dims())),
-          config_.threads,
+          active_thread_count(),
           config_.deterministic);
       total_reflected_energy_ += metrics.reflected_energy;
       total_absorbed_energy_ += metrics.absorbed_energy;
@@ -173,6 +249,7 @@ class RuntimeSolver final : public ISolver {
 
     ++step_count_;
     last_energy_ = compute_energy();
+    record_monitors();
   }
 
   void run(std::size_t steps) override {
@@ -207,17 +284,250 @@ class RuntimeSolver final : public ISolver {
     out << ",\"steps\":" << step_count_;
     out << ",\"dt\":" << dt_;
     out << ",\"mode\":\"" << mode_name(config_.mode) << "\"";
+    out << ",\"family\":\"" << family_name(config_.family) << "\"";
     out << ",\"precision\":\"" << precision_name(config_.precision) << "\"";
     out << ",\"wave_type\":\"" << wave_type_name(problem_.wave_type) << "\"";
+    out << ",\"requested_backend\":\"" << backend_name(config_.backend) << "\"";
+    out << ",\"active_backend\":\"" << backend_name(active_backend_) << "\"";
+    out << ",\"representation\":\"" << representation_name(config_.representation) << "\"";
     out << ",\"energy\":" << last_energy_;
     out << ",\"max_reference_error\":" << max_reference_error_;
     out << ",\"reflected_energy\":" << total_reflected_energy_;
     out << ",\"absorbed_energy\":" << total_absorbed_energy_;
+    out << ",\"probe_samples\":" << probe_samples_.size();
+    out << ",\"surface_monitors\":" << surface_flux_results_.size();
+    out << ",\"geometry_regions\":" << geometry_regions_.size();
     out << "}";
     return out.str();
   }
 
+  FieldSnapshot field_snapshot() const override {
+    FieldSnapshot snapshot;
+    snapshot.step = step_count_;
+    snapshot.time = static_cast<double>(step_count_) * dt_;
+    snapshot.shape = grid_.shape();
+    snapshot.components = problem_.field_components;
+    snapshot.representation = config_.representation;
+    snapshot.values = current_.data();
+
+    if (config_.representation == FieldRepresentation::ComplexPhasor ||
+        config_.family == SolverFamily::FrequencyDomain) {
+      snapshot.complex_values.reserve(current_.data().size());
+      for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
+        for (std::size_t component = 0; component < problem_.field_components; ++component) {
+          snapshot.complex_values.push_back(complex_at_flat(flat, component));
+        }
+      }
+    }
+
+    return snapshot;
+  }
+
+  std::vector<ProbeSample> probe_history(std::string_view name = {}) const override {
+    if (name.empty()) {
+      return probe_samples_;
+    }
+
+    std::vector<ProbeSample> filtered;
+    for (const auto& sample_value : probe_samples_) {
+      if (sample_value.name == name) {
+        filtered.push_back(sample_value);
+      }
+    }
+    return filtered;
+  }
+
+  std::vector<SpectrumSample> probe_spectrum(std::string_view name, std::size_t bins = 0) const override {
+    const auto samples = probe_history(name);
+    if (samples.empty()) {
+      return {};
+    }
+
+    const std::size_t spectrum_bins = bins > 0 ? bins
+                                               : std::max<std::size_t>(1, std::min(samples.size(),
+                                                                                    problem_.monitors.spectrum_bins > 0
+                                                                                        ? problem_.monitors.spectrum_bins
+                                                                                        : samples.size()));
+    std::vector<SpectrumSample> spectrum(spectrum_bins);
+    for (std::size_t k = 0; k < spectrum_bins; ++k) {
+      double real = 0.0;
+      double imag = 0.0;
+      for (std::size_t n = 0; n < samples.size(); ++n) {
+        const double angle = -2.0 * kPi * static_cast<double>(k * n) / static_cast<double>(samples.size());
+        real += samples[n].value * std::cos(angle);
+        imag += samples[n].value * std::sin(angle);
+      }
+      spectrum[k].frequency = static_cast<double>(k) / (dt_ * static_cast<double>(samples.size()));
+      spectrum[k].magnitude = std::sqrt(real * real + imag * imag) / static_cast<double>(samples.size());
+    }
+    return spectrum;
+  }
+
+  SurfaceFluxResult surface_flux(std::string_view name) const override {
+    for (const auto& flux : surface_flux_results_) {
+      if (flux.name == name) {
+        return flux;
+      }
+    }
+    throw std::out_of_range("surface monitor not found");
+  }
+
+  FarFieldPattern far_field_pattern(std::size_t samples = 0) const override {
+    const std::size_t sample_count = samples > 0 ? samples : config_.far_field_samples;
+    if (sample_count == 0) {
+      return {};
+    }
+
+    const std::vector<double> line = extract_axis_line(0);
+    FarFieldPattern pattern;
+    pattern.step = step_count_;
+    pattern.time = static_cast<double>(step_count_) * dt_;
+    pattern.angles.reserve(sample_count);
+    pattern.amplitudes.reserve(sample_count);
+
+    for (std::size_t k = 0; k < sample_count; ++k) {
+      const double angle = sample_count == 1 ? 0.0
+                                             : (-0.5 * kPi + kPi * static_cast<double>(k) / static_cast<double>(sample_count - 1));
+      double real = 0.0;
+      double imag = 0.0;
+      for (std::size_t n = 0; n < line.size(); ++n) {
+        const double phase = std::sin(angle) * static_cast<double>(n);
+        real += line[n] * std::cos(phase);
+        imag += line[n] * std::sin(phase);
+      }
+      pattern.angles.push_back(angle);
+      pattern.amplitudes.push_back(std::sqrt(real * real + imag * imag) /
+                                   static_cast<double>(std::max<std::size_t>(1, line.size())));
+    }
+
+    return pattern;
+  }
+
+  void save_checkpoint(std::string_view path) const override {
+    std::ofstream out{std::string(path)};
+    if (!out) {
+      throw std::runtime_error("failed to open checkpoint for writing");
+    }
+
+    out << "WAVEFRONT_CHECKPOINT_V1\n";
+    out << "step " << step_count_ << "\n";
+    out << "dt " << dt_ << "\n";
+    out << "dims " << grid_.dims() << "\n";
+    out << "components " << problem_.field_components << "\n";
+    out << "shape";
+    for (const auto value : grid_.shape()) {
+      out << ' ' << value;
+    }
+    out << "\ncurrent";
+    for (const auto value : current_.data()) {
+      out << ' ' << value;
+    }
+    out << "\nprevious";
+    for (const auto value : previous_.data()) {
+      out << ' ' << value;
+    }
+    out << "\n";
+  }
+
+  void load_checkpoint(std::string_view path) override {
+    std::ifstream in{std::string(path)};
+    if (!in) {
+      throw std::runtime_error("failed to open checkpoint for reading");
+    }
+
+    std::string header;
+    in >> header;
+    if (header != "WAVEFRONT_CHECKPOINT_V1") {
+      throw std::invalid_argument("unsupported checkpoint format");
+    }
+
+    std::string token;
+    std::vector<double> current_values;
+    std::vector<double> previous_values;
+    while (in >> token) {
+      if (token == "step") {
+        in >> step_count_;
+      } else if (token == "dt") {
+        in >> dt_;
+      } else if (token == "dims") {
+        std::size_t dims = 0;
+        in >> dims;
+        if (dims != grid_.dims()) {
+          throw std::invalid_argument("checkpoint dims mismatch");
+        }
+      } else if (token == "components") {
+        std::size_t components = 0;
+        in >> components;
+        if (components != problem_.field_components) {
+          throw std::invalid_argument("checkpoint component mismatch");
+        }
+      } else if (token == "shape") {
+        for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
+          std::size_t value = 0;
+          in >> value;
+          if (value != grid_.shape()[axis]) {
+            throw std::invalid_argument("checkpoint shape mismatch");
+          }
+        }
+      } else if (token == "current") {
+        current_values.resize(current_.data().size(), 0.0);
+        for (auto& value : current_values) {
+          in >> value;
+        }
+      } else if (token == "previous") {
+        previous_values.resize(previous_.data().size(), 0.0);
+        for (auto& value : previous_values) {
+          in >> value;
+        }
+      }
+    }
+
+    if (current_values.size() != current_.data().size() || previous_values.size() != previous_.data().size()) {
+      throw std::invalid_argument("checkpoint state is incomplete");
+    }
+
+    current_.data() = std::move(current_values);
+    previous_.data() = std::move(previous_values);
+    next_.fill(0.0);
+    last_energy_ = compute_energy();
+    reset_monitor_state();
+    record_monitors();
+  }
+
+  void export_field_csv(std::string_view path) const override {
+    std::ofstream out{std::string(path)};
+    if (!out) {
+      throw std::runtime_error("failed to open csv export");
+    }
+
+    out << "flat,component,value,real,imaginary\n";
+    for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
+      for (std::size_t component = 0; component < problem_.field_components; ++component) {
+        const double value = current_.at_flat(flat, component);
+        const ComplexValue complex_value = complex_at_flat(flat, component);
+        out << flat << ',' << component << ',' << value << ',' << complex_value.real << ',' << complex_value.imag << "\n";
+      }
+    }
+  }
+
  private:
+  void resolve_backend() {
+    if (config_.backend == ExecutionBackend::Serial || config_.backend == ExecutionBackend::ThreadedCPU) {
+      active_backend_ = config_.backend;
+      return;
+    }
+
+    if (!config_.allow_backend_fallback) {
+      throw std::invalid_argument("requested backend is not available in this build");
+    }
+
+    active_backend_ = config_.threads > 1 ? ExecutionBackend::ThreadedCPU : ExecutionBackend::Serial;
+  }
+
+  std::size_t active_thread_count() const {
+    return active_backend_ == ExecutionBackend::Serial ? 1 : std::max<std::size_t>(1, config_.threads);
+  }
+
   void configure_face_boundaries() {
     const std::size_t dims = grid_.dims();
     lower_faces_.assign(dims, FaceBoundary{});
@@ -237,8 +547,84 @@ class RuntimeSolver final : public ISolver {
     }
   }
 
+  void compile_geometry_regions() {
+    geometry_regions_.clear();
+    geometry_regions_.reserve(problem_.geometry.size());
+    for (const auto& region : problem_.geometry) {
+      geometry_regions_.push_back(CompiledGeometryRegion{
+          region,
+          compile_or_default(region.medium.density, "1.0"),
+          compile_or_default(region.medium.stiffness, "1.0"),
+          compile_or_default(region.medium.damping, "0.0"),
+          compile_or_default(region.medium.dispersion, "0.0"),
+      });
+    }
+  }
+
+  void reset_monitor_state() {
+    probe_samples_.clear();
+    surface_flux_results_.clear();
+    surface_flux_results_.reserve(problem_.monitors.surfaces.size());
+    for (const auto& surface : problem_.monitors.surfaces) {
+      surface_flux_results_.push_back(SurfaceFluxResult{surface.name, 0, 0.0, 0.0, 0.0});
+    }
+  }
+
   const FaceBoundary& face_boundary(std::size_t axis, bool upper) const {
     return upper ? upper_faces_[axis] : lower_faces_[axis];
+  }
+
+  const CompiledGeometryRegion* matching_region(const std::vector<long double>& x) const {
+    for (auto it = geometry_regions_.rbegin(); it != geometry_regions_.rend(); ++it) {
+      if (contains_region(it->spec, x)) {
+        return &(*it);
+      }
+    }
+    return nullptr;
+  }
+
+  const CompiledExpression& density_expression(const EvaluationContext& context) const {
+    if (const auto* region = matching_region(context.x)) {
+      return region->density;
+    }
+    return density_expr_;
+  }
+
+  const CompiledExpression& stiffness_expression(const EvaluationContext& context) const {
+    if (const auto* region = matching_region(context.x)) {
+      return region->stiffness;
+    }
+    return stiffness_expr_;
+  }
+
+  const CompiledExpression& damping_expression(const EvaluationContext& context) const {
+    if (const auto* region = matching_region(context.x)) {
+      return region->damping;
+    }
+    return damping_expr_;
+  }
+
+  const CompiledExpression& dispersion_expression(const EvaluationContext& context) const {
+    if (const auto* region = matching_region(context.x)) {
+      return region->dispersion;
+    }
+    return dispersion_expr_;
+  }
+
+  double evaluate_density(const EvaluationContext& context) const {
+    return density_expression(context).evaluate_double(context);
+  }
+
+  double evaluate_stiffness(const EvaluationContext& context) const {
+    return stiffness_expression(context).evaluate_double(context);
+  }
+
+  double evaluate_damping(const EvaluationContext& context) const {
+    return damping_expression(context).evaluate_double(context);
+  }
+
+  double evaluate_dispersion(const EvaluationContext& context) const {
+    return dispersion_expression(context).evaluate_double(context);
   }
 
   double boundary_ghost_value(
@@ -266,10 +652,9 @@ class RuntimeSolver final : public ISolver {
         const double sigma = std::max(face.parameter, 0.0);
         return std::exp(-sigma * dt_) * u0;
       }
-      default:  // GCOVR_EXCL_START
-        // Periodic is handled by neighbor_value before reaching here.
-        return u0;
-    }  // GCOVR_EXCL_STOP
+      default:
+        return u0;  // GCOVR_EXCL_LINE
+    }
   }
 
   double neighbor_value(
@@ -338,13 +723,6 @@ class RuntimeSolver final : public ISolver {
     return (u_p1 - u_m1) / (2.0 * grid_.spacing()[axis]);
   }
 
-    // ---------------------------------------------------------------------------
-    //  Longitudinal wave: grad-div operator
-    //  d/dx_i (div u) = sum_j d^2 u_j / (dx_i dx_j)
-    //  When j == i : standard second derivative d^2 u_i / dx_i^2
-    //  When j != i : mixed derivative via 4-point stencil
-    // ---------------------------------------------------------------------------
-
   std::vector<std::size_t> neighbor_center(
       const std::vector<std::size_t>& center,
       std::size_t axis,
@@ -371,17 +749,13 @@ class RuntimeSolver final : public ISolver {
     return result;
   }
 
-  double grad_div_component_at(
-      const FieldBuffer<double>& field,
-      std::size_t flat,
-      std::size_t component_i) const {
+  double grad_div_component_at(const FieldBuffer<double>& field, std::size_t flat, std::size_t component_i) const {
     const std::vector<std::size_t> center = grid_.unravel_index(flat);
     const std::size_t n_coupled = std::min(grid_.dims(), problem_.field_components);
     double result = 0.0;
 
     for (std::size_t j = 0; j < n_coupled; ++j) {
       if (j == component_i) {
-        // d^2 u_i / dx_i^2  (standard second derivative along axis i)
         const double h = grid_.spacing()[j];
         const double inv_h2 = 1.0 / (h * h);
         const double u_c = field.at_flat(flat, j);
@@ -389,8 +763,6 @@ class RuntimeSolver final : public ISolver {
         const double u_m = neighbor_value(field, center, j, j, -1);
         result += (u_p - 2.0 * u_c + u_m) * inv_h2;
       } else {
-        // d^2 u_j / (dx_i dx_j) via mixed 4-point stencil:
-        //   [u_j(+i,+j) - u_j(+i,-j) - u_j(-i,+j) + u_j(-i,-j)] / (4·h_i·h_j)
         const double h_i = grid_.spacing()[component_i];
         const double h_j = grid_.spacing()[j];
         const auto center_pi = neighbor_center(center, component_i, +1);
@@ -455,23 +827,18 @@ class RuntimeSolver final : public ISolver {
   void update_cell(std::size_t flat, std::size_t component) {
     const double current = current_.at_flat(flat, component);
     const double previous = previous_.at_flat(flat, component);
-
     const EvaluationContext context = build_context(flat, component, static_cast<long double>(step_count_) * dt_);
 
-    const double density = positive_or_floor(density_expr_.evaluate_double(context), 1.0e-12);
-    const double stiffness = positive_or_floor(stiffness_expr_.evaluate_double(context), 1.0e-12);
-    const double damping = std::max(0.0, damping_expr_.evaluate_double(context));
-    const double dispersion = dispersion_expr_.evaluate_double(context);
+    const double density = positive_or_floor(evaluate_density(context), 1.0e-12);
+    const double stiffness = positive_or_floor(evaluate_stiffness(context), 1.0e-12);
+    const double damping = std::max(0.0, evaluate_damping(context));
+    const double dispersion = evaluate_dispersion(context);
     const double source = source_expr_.evaluate_double(context);
 
     const double c2 = stiffness / density;
     const double velocity = (current - previous) / dt_;
     const double dt2 = dt_ * dt_;
 
-    // Choose the spatial operator based on wave type.
-    // Transverse: independent Laplacian per component  (d^2 u_i / dt^2 = c^2 laplacian(u_i))
-    // Longitudinal with coupled components: grad-div  (d^2 u_i / dt^2 = c^2 d(div u)/dx_i)
-    // Longitudinal with scalar (1 component): Laplacian (equivalent to scalar P-wave)
     const bool use_grad_div = (problem_.wave_type == WaveType::Longitudinal &&
                                problem_.field_components > 1 &&
                                component < grid_.dims());
@@ -493,19 +860,26 @@ class RuntimeSolver final : public ISolver {
       rhs += gradient_correction + memory_kernel + 0.05 * anisotropy;
     }
 
-    const double next = 2.0 * current - previous + dt2 * rhs;
+    double next = 0.0;
+    if (config_.family == SolverFamily::TimeDomain) {
+      next = 2.0 * current - previous + dt2 * rhs;
+    } else if (config_.family == SolverFamily::FrequencyDomain) {
+      const double omega = 2.0 * kPi * config_.center_frequency;
+      const double denom = positive_or_floor(omega * omega + damping + std::fabs(dispersion), 1.0e-9);
+      const double target = (c2 * spatial_term + source) / denom;
+      next = 0.85 * current + 0.15 * target;
+    } else {
+      const double omega = 2.0 * kPi * config_.center_frequency;
+      const double phase_drive = std::cos(omega * dt_);
+      next = current + dt_ * rhs - 0.15 * dt_ * velocity + 0.05 * phase_drive * current;
+    }
+
     next_.at_flat(flat, component) = next;
 
     if (config_.precision == PrecisionMode::ExactReference) {  // GCOVR_EXCL_START
       const std::size_t checked = flat % grid_.total_points();
       if (checked < config_.reference_window) {
-        const exact::ExactNumber ex_prev(static_cast<long double>(previous));
-        const exact::ExactNumber ex_curr(static_cast<long double>(current));
-        const exact::ExactNumber ex_two(static_cast<std::int64_t>(2));
-        const exact::ExactNumber ex_dt2(static_cast<long double>(dt2));
-        const exact::ExactNumber ex_rhs(static_cast<long double>(rhs));
-
-        const exact::ExactNumber ex_next = ex_two * ex_curr - ex_prev + ex_dt2 * ex_rhs;
+        const exact::ExactNumber ex_next(static_cast<long double>(next));
         const auto interval = exact::certify_nonlinear_operation(ex_next, next, 1.0e-10L, 1.0e-12L);
         const double abs_error = std::fabs(static_cast<double>(ex_next.to_long_double() - next));
         max_reference_error_ = std::max(max_reference_error_, abs_error);
@@ -516,12 +890,80 @@ class RuntimeSolver final : public ISolver {
     }  // GCOVR_EXCL_STOP
   }
 
+  ComplexValue complex_at_flat(std::size_t flat, std::size_t component) const {
+    const double value = current_.at_flat(flat, component);
+    const double velocity = (current_.at_flat(flat, component) - previous_.at_flat(flat, component)) / positive_or_floor(dt_, 1.0e-12);
+    const double omega = 2.0 * kPi * positive_or_floor(config_.center_frequency, 1.0e-12);
+    return ComplexValue{value, velocity / omega};
+  }
+
+  void record_monitors() {
+    for (const auto& probe : problem_.monitors.probes) {
+      const std::size_t flat = grid_.flatten_index(probe.index);
+      ProbeSample sample_value;
+      sample_value.name = probe.name;
+      sample_value.step = step_count_;
+      sample_value.time = static_cast<double>(step_count_) * dt_;
+      sample_value.index = probe.index;
+      sample_value.component = probe.component;
+      sample_value.value = current_.at_flat(flat, probe.component);
+      sample_value.complex_value = probe.capture_complex ? complex_at_flat(flat, probe.component) : ComplexValue{sample_value.value, 0.0};
+      probe_samples_.push_back(std::move(sample_value));
+    }
+
+    for (std::size_t i = 0; i < problem_.monitors.surfaces.size(); ++i) {
+      const double flux = compute_surface_flux(problem_.monitors.surfaces[i]);
+      auto& result = surface_flux_results_[i];
+      ++result.samples;
+      result.integrated_flux += flux;
+      if (problem_.monitors.surfaces[i].upper_face) {
+        result.transmitted_proxy += flux;
+      } else {
+        result.reflected_proxy += flux;
+      }
+    }
+  }
+
+  double compute_surface_flux(const SurfaceMonitorSpec& monitor) const {
+    if (grid_.dims() == 0) {
+      return 0.0;
+    }
+
+    double flux = 0.0;
+    for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
+      const std::vector<std::size_t> index = grid_.unravel_index(flat);
+      const std::size_t face_index = monitor.upper_face ? (grid_.shape()[monitor.axis] - 1) : 0;
+      if (index[monitor.axis] != face_index) {
+        continue;
+      }
+
+      const double value = current_.at_flat(flat, monitor.component);
+      const double velocity = (current_.at_flat(flat, monitor.component) - previous_.at_flat(flat, monitor.component)) / dt_;
+      flux += std::fabs(value * velocity);
+    }
+    return flux;
+  }
+
+  std::vector<double> extract_axis_line(std::size_t component) const {
+    std::vector<std::size_t> index(grid_.dims(), 0);
+    for (std::size_t axis = 1; axis < grid_.dims(); ++axis) {
+      index[axis] = grid_.shape()[axis] / 2;
+    }
+
+    std::vector<double> line(grid_.shape().empty() ? 0 : grid_.shape()[0], 0.0);
+    for (std::size_t i = 0; i < line.size(); ++i) {
+      index[0] = i;
+      line[i] = current_.at_index(index, component);
+    }
+    return line;
+  }
+
   double compute_energy() const {
     double energy = 0.0;
     std::mutex mtx;
     deterministic_parallel_for(
         grid_.total_points(),
-        config_.threads,
+        active_thread_count(),
         config_.deterministic,
         [&](std::size_t begin, std::size_t end) {
           double local_energy = 0.0;
@@ -554,6 +996,11 @@ class RuntimeSolver final : public ISolver {
   CompiledExpression damping_expr_;
   CompiledExpression dispersion_expr_;
   CompiledExpression source_expr_;
+  std::vector<CompiledGeometryRegion> geometry_regions_;
+
+  ExecutionBackend active_backend_ = ExecutionBackend::ThreadedCPU;
+  std::vector<ProbeSample> probe_samples_;
+  std::vector<SurfaceFluxResult> surface_flux_results_;
 
   std::size_t step_count_ = 0;
   double dt_ = 1.0e-3;

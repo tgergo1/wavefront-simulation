@@ -21,6 +21,8 @@ set(WAVEFRONT_TEST_SOURCES
     unit/test_exact_number.cpp
     unit/test_coverage_gaps.cpp
     unit/test_longitudinal.cpp
+    unit/test_extended_api.cpp
+    unit/test_utilities.cpp
     integration/test_mode_parity.cpp
     verification/test_invariants.cpp
     verification/test_convergence.cpp

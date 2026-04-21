@@ -26,6 +26,13 @@
     "linear_vs_micro_l2": 0.05390343317442829,
     "linear_vs_nonlinear_l2": 0.001085145615286114
   },
+  "monitor_analysis": {
+    "peak_far_field_amplitude": 2.3171386339923574e+35,
+    "peak_snapshot_magnitude": 6.282385872393265e+39,
+    "peak_spectrum_magnitude": 5.4864995013825615e+34,
+    "probe_samples": 85,
+    "transmitted_flux": 7.118020198662957e+66
+  },
   "volume_3d": {
     "active_voxels_midframe": 13800,
     "isotropy_spread": 2.2834884027783794e-15,

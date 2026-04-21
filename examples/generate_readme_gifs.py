@@ -255,6 +255,48 @@ def sample_field(solver: "wf.Solver", nx: int, ny: int) -> Field2D:
     return field
 
 
+def snapshot_panel(snapshot: "wf.FieldSnapshot", nx: int, ny: int, *, magnitude: bool = False) -> Field2D:
+    panel: Field2D = []
+    for y in range(ny):
+        row: List[float] = []
+        for x in range(nx):
+            flat = y * nx + x
+            if magnitude and getattr(snapshot, "complex_values", None):
+                row.append(float(snapshot.complex_values[flat].magnitude()))
+            else:
+                row.append(float(snapshot.values[flat]))
+        panel.append(row)
+    return panel
+
+
+def resample_series(values: Sequence[float], count: int) -> List[float]:
+    if count <= 0:
+        return []
+    if not values:
+        return [0.0] * count
+    if len(values) == count:
+        return [float(v) for v in values]
+
+    out: List[float] = []
+    for i in range(count):
+        src = int(round(i * (len(values) - 1) / max(1, count - 1)))
+        out.append(float(values[src]))
+    return out
+
+
+def bar_panel(values: Sequence[float], nx: int, ny: int) -> Field2D:
+    sampled = [float(v) if math.isfinite(float(v)) else 0.0 for v in resample_series(values, nx)]
+    max_value = max((abs(v) for v in sampled), default=0.0)
+    max_value = max(max_value, 1.0e-12)
+
+    panel: Field2D = [[-0.08 for _ in range(nx)] for _ in range(ny)]
+    for x, value in enumerate(sampled):
+        height = int((abs(value) / max_value) * (ny - 1))
+        for y in range(height + 1):
+            panel[y][x] = abs(value) / max_value
+    return panel
+
+
 def sample_slice_xy(solver: "wf.Solver", nx: int, ny: int, z: int) -> Field2D:
     field: Field2D = []
     for y in range(ny):
@@ -1469,6 +1511,116 @@ def scenario_longitudinal_wave() -> Path:
     )
 
 
+def scenario_monitor_analysis() -> Path:
+    nx = 36
+    ny = 28
+    frames = 20
+    steps_per_frame = 3
+
+    problem = make_problem(
+        nx,
+        ny,
+        density_expr="1.0",
+        stiffness_expr="1.15",
+        source_expr="16.0*sin(18*t)*exp(-((x_0-0.18)*(x_0-0.18)+(x_1-0.50)*(x_1-0.50))/0.012)",
+        damping_expr="0.0010",
+        dispersion_expr="0.0",
+        boundaries=pml_boundaries(),
+    )
+
+    layer = wf.GeometryRegion()
+    layer.name = "glass-slab"
+    layer.shape = wf.GeometryShape.Layer
+    layer.axis = 0
+    layer.lower = 0.54
+    layer.upper = 0.76
+    layer.medium = wf.MediumLaw()
+    layer.medium.density = wf.SymbolicExpr("1.8")
+    layer.medium.stiffness = wf.SymbolicExpr("3.4")
+    layer.medium.damping = wf.SymbolicExpr("0.002")
+    layer.medium.dispersion = wf.SymbolicExpr("0.0")
+    problem.geometry = [layer]
+
+    center_probe = wf.ProbeMonitorSpec()
+    center_probe.name = "center"
+    center_probe.index = [nx // 2, ny // 2]
+    center_probe.component = 0
+    center_probe.capture_complex = True
+
+    output_surface = wf.SurfaceMonitorSpec()
+    output_surface.name = "output"
+    output_surface.axis = 0
+    output_surface.upper_face = True
+    output_surface.component = 0
+
+    problem.monitors.probes = [center_probe]
+    problem.monitors.surfaces = [output_surface]
+    problem.monitors.snapshot_interval = 1
+    problem.monitors.spectrum_bins = nx
+    problem.monitors.enable_far_field = True
+
+    config = make_config(wf.SolverMode.LinearApprox)
+    config.family = wf.SolverFamily.FrequencyDomain
+    config.backend = wf.ExecutionBackend.ThreadedCPU
+    config.representation = wf.FieldRepresentation.ComplexPhasor
+    config.center_frequency = 3.5
+    config.far_field_samples = nx
+
+    solver = wf.Solver(problem, config)
+    solver.run(24)
+
+    frames_data: List[List[Field2D]] = []
+    for _ in range(frames):
+        solver.run(steps_per_frame)
+        snapshot = solver.field_snapshot()
+        spectrum = solver.probe_spectrum("center", nx)
+        far_field = solver.far_field_pattern(nx)
+        frames_data.append(
+            [
+                snapshot_panel(snapshot, nx, ny, magnitude=True),
+                bar_panel([sample.magnitude for sample in spectrum], nx, ny),
+                bar_panel(far_field.amplitudes, nx, ny),
+            ]
+        )
+
+    probe_history = solver.probe_history("center")
+    transmitted_flux = solver.surface_flux("output")
+    final_snapshot = solver.field_snapshot()
+    final_spectrum = solver.probe_spectrum("center", nx)
+    final_far_field = solver.far_field_pattern(nx)
+
+    max_spectrum = max((sample.magnitude for sample in final_spectrum if math.isfinite(sample.magnitude)), default=0.0)
+    max_far_field = max((value for value in final_far_field.amplitudes if math.isfinite(value)), default=0.0)
+    max_snapshot = max((value.magnitude() for value in final_snapshot.complex_values if math.isfinite(value.magnitude())), default=0.0)
+
+    if len(probe_history) < frames:
+        raise RuntimeError("Monitor demo invalid: insufficient probe history collected.")
+    if max_spectrum < 1.0e-6:
+        raise RuntimeError("Monitor demo invalid: probe spectrum remained trivial.")
+    if max_far_field < 1.0e-6:
+        raise RuntimeError("Monitor demo invalid: far-field amplitudes remained trivial.")
+    if transmitted_flux.transmitted_proxy <= 0.0:
+        raise RuntimeError("Monitor demo invalid: transmitted surface flux was not accumulated.")
+    if max_snapshot < 1.0e-6:
+        raise RuntimeError("Monitor demo invalid: complex-valued snapshot magnitude remained trivial.")
+
+    VALIDATION_SUMMARY["monitor_analysis"] = {
+        "probe_samples": len(probe_history),
+        "peak_spectrum_magnitude": max_spectrum,
+        "peak_far_field_amplitude": max_far_field,
+        "transmitted_flux": transmitted_flux.transmitted_proxy,
+        "peak_snapshot_magnitude": max_snapshot,
+    }
+
+    return generate_gif(
+        "wavefield-monitor-analysis.gif",
+        frame_panels=frames_data,
+        fps=12,
+        layout=Layout(cell=5),
+        stripe_colors=[(54, 112, 179), (160, 101, 28), (82, 142, 96)],
+    )
+
+
 def require_ffmpeg() -> None:
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("ffmpeg is required to build GIFs; please install it and retry.")
@@ -1485,6 +1637,7 @@ def main() -> None:
         scenario_boundary_comparison(),
         scenario_double_slit(),
         scenario_longitudinal_wave(),
+        scenario_monitor_analysis(),
         scenario_3d_volume(),
         scenario_4d_hyperslice(),
     ]
