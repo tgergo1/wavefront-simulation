@@ -59,8 +59,6 @@ TEST_CASE("material library sweep helpers and plotting utilities support workflo
 
 TEST_CASE("material library includes exotic presets") {
   const auto presets = wavefront::builtin_materials();
-  CHECK(presets.size() >= 13);
-
   const std::array<std::string_view, 9> exotic_names = {
       "honey",
       "hyperhoney",
@@ -72,6 +70,7 @@ TEST_CASE("material library includes exotic presets") {
       "neutron_star_crust",
       "strange_matter",
   };
+  CHECK(presets.size() >= exotic_names.size() + 4);
 
   for (const auto name : exotic_names) {
     const auto preset = wavefront::builtin_material(name);
@@ -84,7 +83,7 @@ TEST_CASE("material library includes exotic presets") {
 }
 
 TEST_CASE("exotic material presets remain solver-compatible") {
-  const std::array<std::string_view, 8> material_names = {
+  const std::array<std::string_view, 9> material_names = {
       "honey",
       "hyperhoney",
       "oobleck",
@@ -92,6 +91,7 @@ TEST_CASE("exotic material presets remain solver-compatible") {
       "ferrofluid",
       "plasma",
       "metamaterial",
+      "neutron_star_crust",
       "strange_matter",
   };
 
