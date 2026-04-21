@@ -500,7 +500,7 @@ class RuntimeSolver final : public ISolver {
       throw std::runtime_error("failed to open csv export");
     }
 
-    out << "flat,component,value,real,imag\n";
+    out << "flat,component,value,real,imaginary\n";
     for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
       for (std::size_t component = 0; component < problem_.field_components; ++component) {
         const double value = current_.at_flat(flat, component);
@@ -879,8 +879,6 @@ class RuntimeSolver final : public ISolver {
     if (config_.precision == PrecisionMode::ExactReference) {  // GCOVR_EXCL_START
       const std::size_t checked = flat % grid_.total_points();
       if (checked < config_.reference_window) {
-        const exact::ExactNumber ex_prev(static_cast<long double>(previous));
-        const exact::ExactNumber ex_curr(static_cast<long double>(current));
         const exact::ExactNumber ex_next(static_cast<long double>(next));
         const auto interval = exact::certify_nonlinear_operation(ex_next, next, 1.0e-10L, 1.0e-12L);
         const double abs_error = std::fabs(static_cast<double>(ex_next.to_long_double() - next));
@@ -888,8 +886,6 @@ class RuntimeSolver final : public ISolver {
         if (!interval.contains(next)) {
           max_reference_error_ = std::max(max_reference_error_, static_cast<double>(interval.width()));
         }
-        (void)ex_prev;
-        (void)ex_curr;
       }
     }  // GCOVR_EXCL_STOP
   }

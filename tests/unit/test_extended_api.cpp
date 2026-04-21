@@ -69,7 +69,7 @@ TEST_CASE("runtime solver exposes snapshots monitors far-field and IO") {
   REQUIRE(csv.good());
   std::string header;
   std::getline(csv, header);
-  CHECK(header == "flat,component,value,real,imag");
+  CHECK(header == "flat,component,value,real,imaginary");
 
   const std::string diagnostics = solver->diagnostics_json();
   CHECK(diagnostics.find("\"family\":\"FrequencyDomain\"") != std::string::npos);
