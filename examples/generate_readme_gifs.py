@@ -546,9 +546,15 @@ def l2_difference(lhs: Field2D, rhs: Field2D) -> float:
 
 
 def subtract_fields(lhs: Field2D, rhs: Field2D) -> Field2D:
-    if len(lhs) != len(rhs) or len(lhs[0]) != len(rhs[0]):
+    if len(lhs) != len(rhs):
         raise ValueError("Field shape mismatch in subtract_fields")
-    return [[lhs[y][x] - rhs[y][x] for x in range(len(lhs[0]))] for y in range(len(lhs))]
+    if not lhs:
+        return []
+
+    width = len(lhs[0])
+    if any(len(row) != width for row in lhs) or any(len(row) != width for row in rhs):
+        raise ValueError("Non-rectangular field supplied to subtract_fields")
+    return [[lhs[y][x] - rhs[y][x] for x in range(width)] for y in range(len(lhs))]
 
 
 def demean_field(field: Field2D) -> Field2D:
@@ -585,7 +591,11 @@ def accumulate_energy_field(
 
 
 def log_positive_field(field: Field2D) -> Field2D:
-    peak = max((value for row in field if row for value in row), default=0.0)
+    peak = 0.0
+    for row in field:
+        for value in row:
+            if value > peak:
+                peak = value
     if peak <= 0.0:
         return [[0.0 for _ in row] for row in field]
     scale = math.log1p(peak)
