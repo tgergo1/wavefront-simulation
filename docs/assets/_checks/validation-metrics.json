@@ -39,11 +39,11 @@
     "linear_vs_nonlinear_l2": 0.00108514561528629
   },
   "monitor_analysis": {
-    "peak_far_field_amplitude": 2.3171386339923574e+35,
-    "peak_snapshot_magnitude": 6.282385872393265e+39,
-    "peak_spectrum_magnitude": 5.4864995013825615e+34,
+    "peak_far_field_amplitude": 0.01626037592972834,
+    "peak_snapshot_magnitude": 0.05095505101625254,
+    "peak_spectrum_magnitude": 0.0009060475150155063,
     "probe_samples": 85,
-    "transmitted_flux": 7.118020198662957e+66
+    "transmitted_flux": 5.024593901518272e-23
   },
   "volume_3d": {
     "active_voxels_midframe": 13800,

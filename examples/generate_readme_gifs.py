@@ -45,9 +45,39 @@ class Layout:
     margin: int = 16
     panel_gap: int = 12
     panel_pad: int = 6
-    stripe_h: int = 6
+    stripe_h: int = 14
     legend_h: int = 10
     legend_margin: int = 10
+
+
+BITMAP_FONT = {
+    " ": ["00000", "00000", "00000", "00000", "00000", "00000", "00000"],
+    "-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
+    "A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
+    "C": ["01111", "10000", "10000", "10000", "10000", "10000", "01111"],
+    "D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
+    "E": ["11111", "10000", "10000", "11110", "10000", "10000", "11111"],
+    "F": ["11111", "10000", "10000", "11110", "10000", "10000", "10000"],
+    "G": ["01111", "10000", "10000", "10011", "10001", "10001", "01111"],
+    "H": ["10001", "10001", "10001", "11111", "10001", "10001", "10001"],
+    "I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"],
+    "L": ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
+    "M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
+    "N": ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
+    "O": ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
+    "P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
+    "R": ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
+    "S": ["01111", "10000", "10000", "01110", "00001", "00001", "11110"],
+    "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
+    "U": ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
+    "V": ["10001", "10001", "10001", "10001", "10001", "01010", "00100"],
+    "Y": ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
+}
+
+BT709_LUMINANCE = (0.2126, 0.7152, 0.0722)
+LIGHT_TEXT = (248, 250, 252)
+DARK_TEXT = (31, 41, 55)
+TEXT_LUMINANCE_THRESHOLD = 145.0
 
 
 def clamp(v: float, lo: float, hi: float) -> float:
@@ -265,6 +295,8 @@ def snapshot_panel(snapshot: "wf.FieldSnapshot", nx: int, ny: int, *, magnitude:
             flat = y * nx + x
             if magnitude and getattr(snapshot, "complex_values", None):
                 row.append(float(snapshot.complex_values[flat].magnitude()))
+            elif magnitude:
+                row.append(abs(float(snapshot.values[flat])))
             else:
                 row.append(float(snapshot.values[flat]))
         panel.append(row)
@@ -352,6 +384,19 @@ def max_abs_in_sequence(sequence: Sequence[Sequence[Field2D]]) -> float:
                     if av > m:
                         m = av
     return max(m, 1.0e-12)
+
+
+def max_abs_by_panel(sequence: Sequence[Sequence[Field2D]]) -> List[float]:
+    if not sequence:
+        return []
+
+    scales = [0.0 for _ in sequence[0]]
+    for frame_panels in sequence:
+        for panel_idx, panel in enumerate(frame_panels):
+            for row in panel:
+                for value in row:
+                    scales[panel_idx] = max(scales[panel_idx], abs(value))
+    return [max(scale, 1.0e-12) for scale in scales]
 
 
 def max_abs_in_volumes(volumes: Sequence[Volume3D]) -> float:
@@ -602,12 +647,31 @@ def log_positive_field(field: Field2D) -> Field2D:
     return [[math.log1p(max(0.0, value)) / scale for value in row] for row in field]
 
 
+def text_width(text: str, scale: int = 1) -> int:
+    width = 0
+    for ch in text.upper():
+        glyph = BITMAP_FONT.get(ch, BITMAP_FONT[" "])
+        width += len(glyph[0]) * scale + scale
+    return max(0, width - scale)
+
+
+def text_color_for(background: RGB) -> RGB:
+    # ITU-R BT.709 coefficients keep title text legible across the stripe palette.
+    luminance = (
+        BT709_LUMINANCE[0] * background[0]
+        + BT709_LUMINANCE[1] * background[1]
+        + BT709_LUMINANCE[2] * background[2]
+    )
+    return LIGHT_TEXT if luminance < TEXT_LUMINANCE_THRESHOLD else DARK_TEXT
+
+
 def render_frame(
     panels: Sequence[Field2D],
-    scale: float,
+    scales: Sequence[float],
     layout: Layout,
     stripe_colors: Sequence[RGB],
     overlays: Sequence[Overlay2D] | None = None,
+    panel_titles: Sequence[str] | None = None,
 ) -> Tuple[int, int, List[bytearray]]:
     ny = len(panels[0])
     nx = len(panels[0][0])
@@ -653,10 +717,24 @@ def render_frame(
             set_px(x, yy, c)
             set_px(x + w - 1, yy, c)
 
+    def draw_text(x: int, y: int, text: str, color: RGB, scale: int = 1) -> None:
+        cursor = x
+        for ch in text.upper():
+            glyph = BITMAP_FONT.get(ch, BITMAP_FONT[" "])
+            for gy, glyph_row in enumerate(glyph):
+                for gx, bit in enumerate(glyph_row):
+                    if bit != "1":
+                        continue
+                    for sy in range(scale):
+                        for sx in range(scale):
+                            set_px(cursor + gx * scale + sx, y + gy * scale + sy, color)
+            cursor += len(glyph[0]) * scale + scale
+
     left = layout.margin
     top = layout.margin
 
     for panel_idx, panel in enumerate(panels):
+        panel_scale = scales[panel_idx] if panel_idx < len(scales) else 1.0
         outer_x = left + panel_idx * (panel_w + 2 * layout.panel_pad + layout.panel_gap)
         outer_y = top
         outer_w = panel_w + 2 * layout.panel_pad
@@ -673,6 +751,11 @@ def render_frame(
             layout.stripe_h,
             stripe_color,
         )
+        if panel_titles is not None and panel_idx < len(panel_titles):
+            title = panel_titles[panel_idx]
+            title_x = outer_x + max(3, (outer_w - text_width(title)) // 2)
+            title_y = outer_y + max(1, (layout.stripe_h - 7) // 2)
+            draw_text(title_x, title_y, title, text_color_for(stripe_color))
 
         panel_x = outer_x + layout.panel_pad
         panel_y = outer_y + layout.stripe_h
@@ -683,7 +766,7 @@ def render_frame(
             overlay_row = overlay[ny - 1 - y] if overlay is not None else None
             for x in range(nx):
                 # Compress dynamic range so low-amplitude far-field structure remains visible.
-                color = color_for(math.tanh(1.8 * src_row[x] / scale))
+                color = color_for(math.tanh(1.8 * src_row[x] / panel_scale))
                 if overlay_row is not None:
                     mask = overlay_row[x]
                     if mask == 1:
@@ -913,21 +996,29 @@ def generate_gif(
     layout: Layout,
     stripe_colors: Sequence[RGB],
     overlays: Sequence[Overlay2D] | None = None,
+    panel_titles: Sequence[str] | None = None,
+    panel_scale_mode: str = "shared",
 ) -> Path:
     output = ASSETS / name
     ASSETS.mkdir(parents=True, exist_ok=True)
 
-    scale = max_abs_in_sequence(frame_panels)
+    if panel_scale_mode == "shared":
+        scales = [max_abs_in_sequence(frame_panels) for _ in frame_panels[0]]
+    elif panel_scale_mode == "panel":
+        scales = max_abs_by_panel(frame_panels)
+    else:
+        raise ValueError(f"Unsupported panel_scale_mode: {panel_scale_mode}")
 
     with tempfile.TemporaryDirectory(prefix="wavefront_gif_") as tmp:
         tmp_path = Path(tmp)
         for idx, panels in enumerate(frame_panels):
             width, height, rows = render_frame(
                 panels,
-                scale,
+                scales,
                 layout,
                 stripe_colors,
                 overlays=overlays,
+                panel_titles=panel_titles,
             )
             frame_path = tmp_path / f"frame_{idx:04d}.png"
             write_png_rgb(frame_path, width, height, rows)
@@ -992,6 +1083,7 @@ def scenario_modes_evolution() -> Path:
         fps=12,
         layout=Layout(cell=5),
         stripe_colors=[(21, 82, 161), (222, 121, 33), (56, 131, 84)],
+        panel_titles=["LINEAR", "NONLINEAR", "MICRO"],
     )
 
 
@@ -1033,6 +1125,7 @@ def scenario_mode_residuals() -> Path:
         fps=12,
         layout=Layout(cell=5),
         stripe_colors=[(222, 121, 33), (56, 131, 84)],
+        panel_titles=["NONLINEAR", "MICRO"],
     )
 
 
@@ -1080,6 +1173,7 @@ def scenario_interface_reflection() -> Path:
         fps=12,
         layout=Layout(cell=6),
         stripe_colors=[(93, 79, 166)],
+        panel_titles=["INTERFACE"],
     )
 
 
@@ -1169,6 +1263,7 @@ def scenario_boundary_comparison() -> Path:
         fps=12,
         layout=Layout(cell=5),
         stripe_colors=[(177, 82, 27), (22, 111, 89)],
+        panel_titles=["PERIODIC", "PML"],
     )
 
 
@@ -1278,6 +1373,8 @@ def scenario_double_slit() -> Path:
         layout=Layout(cell=5),
         stripe_colors=[(119, 42, 146), (181, 96, 31)],
         overlays=[overlay, overlay],
+        panel_titles=["FIELD AND SLITS", "LOG INTENSITY"],
+        panel_scale_mode="panel",
     )
 
 
@@ -1606,6 +1703,7 @@ def scenario_longitudinal_wave() -> Path:
         fps=12,
         layout=Layout(cell=5),
         stripe_colors=[(42, 118, 162), (162, 72, 42)],
+        panel_titles=["DIVERGENCE", "TRANSVERSE"],
     )
 
 
@@ -1658,10 +1756,7 @@ def scenario_monitor_analysis() -> Path:
     problem.monitors.enable_far_field = True
 
     config = make_config(wf.SolverMode.LinearApprox)
-    config.family = wf.SolverFamily.FrequencyDomain
     config.backend = wf.ExecutionBackend.ThreadedCPU
-    config.representation = wf.FieldRepresentation.ComplexPhasor
-    config.center_frequency = 3.5
     config.far_field_samples = nx
 
     solver = wf.Solver(problem, config)
@@ -1689,7 +1784,13 @@ def scenario_monitor_analysis() -> Path:
 
     max_spectrum = max((sample.magnitude for sample in final_spectrum if math.isfinite(sample.magnitude)), default=0.0)
     max_far_field = max((value for value in final_far_field.amplitudes if math.isfinite(value)), default=0.0)
-    max_snapshot = max((value.magnitude() for value in final_snapshot.complex_values if math.isfinite(value.magnitude())), default=0.0)
+    if getattr(final_snapshot, "complex_values", None):
+        max_snapshot = max(
+            (value.magnitude() for value in final_snapshot.complex_values if math.isfinite(value.magnitude())),
+            default=0.0,
+        )
+    else:
+        max_snapshot = max((abs(value) for value in final_snapshot.values if math.isfinite(value)), default=0.0)
 
     if len(probe_history) < frames:
         raise RuntimeError("Monitor demo invalid: insufficient probe history collected.")
@@ -1700,7 +1801,7 @@ def scenario_monitor_analysis() -> Path:
     if transmitted_flux.transmitted_proxy <= 0.0:
         raise RuntimeError("Monitor demo invalid: transmitted surface flux was not accumulated.")
     if max_snapshot < 1.0e-6:
-        raise RuntimeError("Monitor demo invalid: complex-valued snapshot magnitude remained trivial.")
+        raise RuntimeError("Monitor demo invalid: snapshot magnitude remained trivial.")
 
     VALIDATION_SUMMARY["monitor_analysis"] = {
         "probe_samples": len(probe_history),
@@ -1716,6 +1817,8 @@ def scenario_monitor_analysis() -> Path:
         fps=12,
         layout=Layout(cell=5),
         stripe_colors=[(54, 112, 179), (160, 101, 28), (82, 142, 96)],
+        panel_titles=["SNAPSHOT", "SPECTRUM", "FAR FIELD"],
+        panel_scale_mode="panel",
     )
 
 
