@@ -104,7 +104,7 @@ metrics are all exercised in one place by `examples/generate_readme_gifs.py`.
 - Result APIs: full-field snapshots, probe histories/spectra, surface flux monitors, far-field patterns
 - Bulk data I/O: CSV field export plus checkpoint save/load
 - Complex phasor snapshots and backend-selection diagnostics
-- Built-in material presets, parameter sweeps, finite-difference gradients, and plotting helpers
+- Built-in material presets (including honey, hyperhoney, oobleck, ferrofluid, aerogel, plasma, metamaterial, and dense compact-object media), parameter sweeps, finite-difference gradients, and plotting helpers
 - Symbolic expression parser/compiler for medium and source terms
 - Exact-reference infrastructure with `limitless` in `ExactReference` mode
 - CMake package export and pybind11 Python module

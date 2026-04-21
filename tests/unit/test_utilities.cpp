@@ -1,5 +1,7 @@
 #include <doctest/doctest.h>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -53,4 +55,60 @@ TEST_CASE("material library sweep helpers and plotting utilities support workflo
   CHECK(max_value >= min_value);
   CHECK(normalized.size() == series.size());
   CHECK(*std::max_element(normalized.begin(), normalized.end()) <= doctest::Approx(1.0));
+}
+
+TEST_CASE("material library includes exotic presets") {
+  const auto presets = wavefront::builtin_materials();
+  CHECK(presets.size() >= 13);
+
+  const std::array<std::string_view, 9> exotic_names = {
+      "honey",
+      "hyperhoney",
+      "oobleck",
+      "aerogel",
+      "ferrofluid",
+      "plasma",
+      "metamaterial",
+      "neutron_star_crust",
+      "strange_matter",
+  };
+
+  for (const auto name : exotic_names) {
+    const auto preset = wavefront::builtin_material(name);
+    CHECK(preset.name == name);
+    CHECK_FALSE(preset.medium.density.text.empty());
+    CHECK_FALSE(preset.medium.stiffness.text.empty());
+  }
+
+  CHECK_THROWS_AS(wavefront::builtin_material("unknown_exotic_goo"), std::out_of_range);
+}
+
+TEST_CASE("exotic material presets remain solver-compatible") {
+  const std::array<std::string_view, 8> material_names = {
+      "honey",
+      "hyperhoney",
+      "oobleck",
+      "aerogel",
+      "ferrofluid",
+      "plasma",
+      "metamaterial",
+      "strange_matter",
+  };
+
+  auto config = test_common::default_config(wavefront::SolverMode::MicroSurrogate);
+  config.family = wavefront::SolverFamily::AngularSpectrum;
+
+  for (const auto name : material_names) {
+    auto problem = test_common::default_problem_1d(40);
+    problem.medium = wavefront::builtin_material(name).medium;
+    problem.source_term.text = "sin(8*t)*exp(-4*t)";
+
+    auto solver = wavefront::make_solver(problem, config);
+    solver->run(5);
+
+    const auto sample = solver->sample(std::vector<std::size_t>{20});
+    CHECK(sample.size() == 1);
+    CHECK(std::isfinite(sample[0]));
+    CHECK(std::isfinite(solver->field_snapshot().values.at(20)));
+  }
 }
