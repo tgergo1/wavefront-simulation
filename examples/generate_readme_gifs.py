@@ -73,8 +73,7 @@ def color_for(v: float) -> RGB:
         (0.45, (236, 146, 75)),
         (1.0, (148, 34, 49)),
     ]
-    for idx in range(len(anchors) - 1):
-        left_n, left_c = anchors[idx]
+    for idx, (left_n, left_c) in enumerate(anchors[:-1]):
         right_n, right_c = anchors[idx + 1]
         if left_n <= n <= right_n:
             alpha = (n - left_n) / max(1.0e-12, right_n - left_n)
@@ -586,7 +585,7 @@ def accumulate_energy_field(
 
 
 def log_positive_field(field: Field2D) -> Field2D:
-    peak = max((max(row) for row in field if row), default=0.0)
+    peak = max((value for row in field if row for value in row), default=0.0)
     if peak <= 0.0:
         return [[0.0 for _ in row] for row in field]
     scale = math.log1p(peak)
@@ -1008,7 +1007,8 @@ def scenario_mode_residuals() -> Path:
     )
     if nonlinear_residual_rms < 5.0e-4 or micro_residual_rms < 5.0e-4:
         raise RuntimeError(
-            "Mode residual demo invalid: residual panels stayed too close to zero."
+            f"Mode residual demo invalid: residual panels stayed too close to zero "
+            f"(nonlinear={nonlinear_residual_rms:.3e}, micro={micro_residual_rms:.3e})."
         )
     VALIDATION_SUMMARY["mode_residuals"] = {
         "linear_vs_nonlinear_l2": linear_vs_nonlinear,
