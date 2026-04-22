@@ -17,7 +17,7 @@ if(WAVEFRONT_ENABLE_EXACT)
     FetchContent_Declare(
       limitless
       GIT_REPOSITORY https://github.com/tgergo1/limitless.git
-      GIT_TAG 41af45dcba41985d6e88bd6dbd30b8d4bdbe2f18
+      GIT_TAG v0.2.0
       GIT_SHALLOW TRUE
     )
     FetchContent_GetProperties(limitless)
