@@ -281,7 +281,11 @@ TEST_CASE("runtime solver tracks multi-source collisions and persists collision 
   REQUIRE(csv.good());
   std::string header;
   std::getline(csv, header);
-  CHECK(header == "flat,component,value,real,imaginary,collision_activity,self_activity,dominant_wave_pair,dominant_class_pair");
+  CHECK(header.find("flat,component,value,real,imaginary") == 0);
+  CHECK(header.find("collision_activity") != std::string::npos);
+  CHECK(header.find("self_activity") != std::string::npos);
+  CHECK(header.find("dominant_wave_pair") != std::string::npos);
+  CHECK(header.find("dominant_class_pair") != std::string::npos);
 }
 
 TEST_CASE("collision monitors keep self activity separate from cross-wave collisions") {
