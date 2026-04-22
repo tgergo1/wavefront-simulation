@@ -30,6 +30,8 @@ namespace wavefront {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
+constexpr long double kPolygonRayCastEpsilon = 1.0e-18L;
+constexpr std::size_t kMaxFractalIterations = 6;
 
 CompiledExpression compile_or_default(const SymbolicExpr& expression, const char* fallback) {
   return CompiledExpression::compile(expression.text.empty() ? fallback : expression.text);
@@ -214,7 +216,7 @@ bool point_in_polygon_2d(std::span<const long double> x, const std::vector<doubl
     const long double xj = static_cast<long double>(vertices[2 * j]);
     const long double yj = static_cast<long double>(vertices[2 * j + 1]);
     const bool crosses = ((yi > py) != (yj > py)) &&
-                         (px < (xj - xi) * (py - yi) / ((yj - yi) + 1.0e-18L) + xi);
+                         (px < (xj - xi) * (py - yi) / ((yj - yi) + kPolygonRayCastEpsilon) + xi);
     if (crosses) {
       inside = !inside;
     }
@@ -240,7 +242,7 @@ std::vector<double> build_koch_snowflake_vertices(const GeometryRegion& region) 
       {cx + sqrt3_over_2 * effective_radius, cy - 0.5L * effective_radius},
   };
 
-  const std::size_t iterations = std::min<std::size_t>(region.fractal_iterations, 6);
+  const std::size_t iterations = std::min<std::size_t>(region.fractal_iterations, kMaxFractalIterations);
   for (std::size_t iteration = 0; iteration < iterations; ++iteration) {
     std::vector<std::array<long double, 2>> refined;
     refined.reserve(polygon.size() * 4);
@@ -272,6 +274,13 @@ std::vector<double> build_koch_snowflake_vertices(const GeometryRegion& region) 
     vertices.push_back(static_cast<double>(point[1]));
   }
   return vertices;
+}
+
+std::size_t compute_shell_cells_from_thickness(double shell_thickness, double min_spacing) {
+  if (min_spacing <= 0.0) {
+    return 1;
+  }
+  return std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(shell_thickness / min_spacing)));
 }
 
 bool contains_region(const CompiledGeometryRegion& region, std::span<const long double> x) {
@@ -1312,8 +1321,7 @@ class RuntimeSolver final : public ISolver {
         return {};
       }
 
-      const std::size_t shell_cells =
-          std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(monitor.shell_thickness / grid_.min_spacing())));
+      const std::size_t shell_cells = compute_shell_cells_from_thickness(monitor.shell_thickness, grid_.min_spacing());
       for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
         if (!is_geometry_surface_cell(flat, target_region, shell_cells)) {
           continue;

@@ -9,6 +9,7 @@ namespace wavefront {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kMinCosineValue = 1.0e-12;
 
 }
 
@@ -92,7 +93,7 @@ InterfaceScatteringResult compute_planar_interface_scattering(
   result.transmitted_amplitude = incident_amplitude * t;
   result.reflected_power = incident_amplitude * incident_amplitude * r * r;
   result.transmitted_power =
-      incident_amplitude * incident_amplitude * (z_in * cos_out) / (z_out * std::max(cos_in, 1.0e-12)) *
+      incident_amplitude * incident_amplitude * (z_in * cos_out) / (z_out * std::max(cos_in, kMinCosineValue)) *
       t * t;
   result.phase_shift_radians = r < 0.0 ? kPi : 0.0;
   return result;
