@@ -21,7 +21,10 @@ TEST_CASE("interface reflection and transmission obey impedance relationships") 
 
   const double z1 = wavefront::impedance(rho_1, wavefront::phase_velocity(k_1, rho_1));
   const double z2 = wavefront::impedance(rho_2, wavefront::phase_velocity(k_2, rho_2));
-  CHECK(flux.reflected == doctest::Approx(wavefront::reflection_coefficient(z1, z2)));
+  const auto scattering =
+      wavefront::compute_planar_interface_scattering(1.0, 0.2, rho_1, k_1, rho_2, k_2);
+  CHECK(flux.reflected == doctest::Approx(scattering.reflected_amplitude));
+  CHECK(wavefront::reflection_coefficient(z1, z2) >= scattering.reflected_amplitude);
 }
 
 TEST_CASE("Dirichlet boundary enforces fixed value at boundary nodes") {

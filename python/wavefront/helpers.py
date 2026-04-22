@@ -39,6 +39,44 @@ def make_layer_region(name: str, axis: int, lower: float, upper: float, material
     return region
 
 
+def make_polygon_region(name: str, vertices: list[float], material: MediumLaw) -> GeometryRegion:
+    region = GeometryRegion()
+    region.name = name
+    region.shape = GeometryShape.Polygon
+    region.vertices = vertices
+    region.medium = material
+    return region
+
+
+def make_sdf_region(name: str, signed_distance: str, material: MediumLaw) -> GeometryRegion:
+    region = GeometryRegion()
+    region.name = name
+    region.shape = GeometryShape.SignedDistanceField
+    region.signed_distance = SymbolicExpr(signed_distance)
+    region.medium = material
+    return region
+
+
+def make_koch_snowflake_region(
+    name: str,
+    center: list[float],
+    radius: float,
+    iterations: int,
+    material: MediumLaw,
+    scale: float = 1.0,
+) -> GeometryRegion:
+    region = GeometryRegion()
+    region.name = name
+    region.shape = GeometryShape.Fractal
+    region.center = center
+    region.radius = radius
+    region.fractal_generator = "koch_snowflake"
+    region.fractal_iterations = iterations
+    region.fractal_scale = scale
+    region.medium = material
+    return region
+
+
 def make_probe_monitor(name: str, index: list[int], component: int = 0, capture_complex: bool = False) -> ProbeMonitorSpec:
     monitor = ProbeMonitorSpec()
     monitor.name = name
@@ -54,4 +92,13 @@ def make_surface_monitor(name: str, axis: int, upper_face: bool, component: int 
     monitor.axis = axis
     monitor.upper_face = upper_face
     monitor.component = component
+    return monitor
+
+
+def make_geometry_surface_monitor(name: str, geometry_region: str, component: int = 0, shell_thickness: float = 0.0) -> SurfaceMonitorSpec:
+    monitor = SurfaceMonitorSpec()
+    monitor.name = name
+    monitor.component = component
+    monitor.geometry_region = geometry_region
+    monitor.shell_thickness = shell_thickness
     return monitor

@@ -21,7 +21,7 @@ Key meanings:
 - `SolverFamily`: propagation strategy (`TimeDomain`, `FrequencyDomain`, `AngularSpectrum`)
 - `ExecutionBackend`: requested execution target (`Serial`, `ThreadedCPU`, `GPUAccelerated`, `Distributed`)
 - `FieldRepresentation`: real scalar vs complex phasor result views
-- `GeometryShape`: region primitive (`Box`, `Sphere`, `Layer`)
+- `GeometryShape`: region primitive (`Box`, `Sphere`, `Layer`, `Polygon`, `SignedDistanceField`, `Fractal`)
 
 ### Core structs
 
@@ -57,7 +57,7 @@ Key meanings:
 
 - `grid`: dimensions, shape, spacing, and origin
 - `medium`: background symbolic density/stiffness/damping/dispersion laws
-- `geometry`: region overrides applied on top of the background medium
+- `geometry`: region overrides applied on top of the background medium, including polygon, signed-distance, and finite fractal surfaces
 - `boundaries`: per-axis face boundary conditions
 - `monitors`: probe, surface, snapshot, spectrum, and far-field configuration
 - `source_term`: symbolic source expression
@@ -105,7 +105,7 @@ Key meanings:
 
 ### Geometry and materials
 
-- `ProblemSpec::geometry` accepts `GeometryRegion` entries with `Box`, `Sphere`, and `Layer` shapes.
+- `ProblemSpec::geometry` accepts `GeometryRegion` entries with `Box`, `Sphere`, `Layer`, `Polygon`, `SignedDistanceField`, and `Fractal` shapes.
 - `ProblemSpec::monitors` accepts probe/surface monitor suites.
 - Built-in material presets: `include/wavefront/material/library.hpp` (`air`, `water`, `glass`, `steel`, `honey`, `hyperhoney`, `oobleck`, `aerogel`, `ferrofluid`, `plasma`, `metamaterial`, `neutron_star_crust`, `strange_matter`)
 
@@ -117,6 +117,15 @@ GeometryRegion highlights:
 - `center` / `radius`: sphere definition
 - `axis`, `lower`, `upper`: layer definition
 - `medium`: symbolic material override used inside the region
+- `vertices`: flattened 2-D polygon vertex list for `Polygon`
+- `signed_distance`: symbolic signed-distance expression for `SignedDistanceField`
+- `fractal_generator`, `fractal_iterations`, `fractal_scale`: finite fractal controls (`koch_snowflake` currently supported)
+
+Surface monitor highlights:
+
+- Standard boundary-face monitors still use `axis` and `upper_face`
+- Arbitrary-surface monitors set `geometry_region` to a named region and optionally `shell_thickness`
+- `SurfaceFluxResult` now also reports `peak_flux` and `phase_proxy`
 
 ### Optimization and helper utilities
 

@@ -29,8 +29,12 @@ from ._wavefront import (
 )
 from .helpers import (
     builtin_material,
+    make_geometry_surface_monitor,
+    make_koch_snowflake_region,
     make_layer_region,
+    make_polygon_region,
     make_probe_monitor,
+    make_sdf_region,
     make_surface_monitor,
 )
 from .plotting import normalize_series, snapshot_component_series, snapshot_minmax
@@ -62,8 +66,12 @@ __all__ = [
     "SymbolicExpr",
     "WaveType",
     "builtin_material",
+    "make_geometry_surface_monitor",
+    "make_koch_snowflake_region",
     "make_layer_region",
+    "make_polygon_region",
     "make_probe_monitor",
+    "make_sdf_region",
     "make_surface_monitor",
     "normalize_series",
     "snapshot_component_series",

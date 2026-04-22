@@ -10,11 +10,29 @@ struct InterfaceFluxResult {
   double mode_conversion = 0.0;
 };
 
+struct InterfaceScatteringResult {
+  double reflected_amplitude = 0.0;
+  double transmitted_amplitude = 0.0;
+  double reflected_power = 0.0;
+  double transmitted_power = 0.0;
+  double reflected_angle_radians = 0.0;
+  double transmitted_angle_radians = 0.0;
+  double phase_shift_radians = 0.0;
+  bool total_internal_reflection = false;
+};
+
 double phase_velocity(double stiffness, double density);
 double impedance(double density, double phase_velocity);
 double reflection_coefficient(double z_in, double z_out);
 double transmission_coefficient(double z_in, double z_out);
 double refraction_angle(double theta_incident_radians, double c_in, double c_out);
+InterfaceScatteringResult compute_planar_interface_scattering(
+    double incident_amplitude,
+    double theta_incident_radians,
+    double density_in,
+    double stiffness_in,
+    double density_out,
+    double stiffness_out);
 
 InterfaceFluxResult compute_interface_flux(
     double incident_amplitude,
