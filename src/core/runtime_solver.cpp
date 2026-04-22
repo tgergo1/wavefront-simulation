@@ -1879,7 +1879,7 @@ class RuntimeSolver final : public ISolver {
     CollisionSurfaceSample sample;
     sample.wave_pairs.assign(compiled_sources_.size() > 1 ? (compiled_sources_.size() * (compiled_sources_.size() - 1)) / 2 : 0, 0.0);
     sample.class_pairs.assign(source_classes_.size() > 1 ? (source_classes_.size() * (source_classes_.size() - 1)) / 2 : 0, 0.0);
-    if (compiled_sources_.size() < 2 || grid_.dims() == 0) {
+    if (compiled_sources_.empty() || grid_.dims() == 0) {
       return sample;
     }
 
