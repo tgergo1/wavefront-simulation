@@ -89,7 +89,10 @@ PYBIND11_MODULE(_wavefront, m) {
   py::enum_<wavefront::GeometryShape>(m, "GeometryShape")
       .value("Box", wavefront::GeometryShape::Box)
       .value("Sphere", wavefront::GeometryShape::Sphere)
-      .value("Layer", wavefront::GeometryShape::Layer);
+      .value("Layer", wavefront::GeometryShape::Layer)
+      .value("Polygon", wavefront::GeometryShape::Polygon)
+      .value("SignedDistanceField", wavefront::GeometryShape::SignedDistanceField)
+      .value("Fractal", wavefront::GeometryShape::Fractal);
 
   py::class_<wavefront::GridSpec>(m, "GridSpec")
       .def(py::init<>())
@@ -121,7 +124,12 @@ PYBIND11_MODULE(_wavefront, m) {
       .def_readwrite("axis", &wavefront::GeometryRegion::axis)
       .def_readwrite("lower", &wavefront::GeometryRegion::lower)
       .def_readwrite("upper", &wavefront::GeometryRegion::upper)
-      .def_readwrite("medium", &wavefront::GeometryRegion::medium);
+      .def_readwrite("medium", &wavefront::GeometryRegion::medium)
+      .def_readwrite("vertices", &wavefront::GeometryRegion::vertices)
+      .def_readwrite("signed_distance", &wavefront::GeometryRegion::signed_distance)
+      .def_readwrite("fractal_generator", &wavefront::GeometryRegion::fractal_generator)
+      .def_readwrite("fractal_iterations", &wavefront::GeometryRegion::fractal_iterations)
+      .def_readwrite("fractal_scale", &wavefront::GeometryRegion::fractal_scale);
 
   py::class_<wavefront::ProbeMonitorSpec>(m, "ProbeMonitorSpec")
       .def(py::init<>())
@@ -135,7 +143,9 @@ PYBIND11_MODULE(_wavefront, m) {
       .def_readwrite("name", &wavefront::SurfaceMonitorSpec::name)
       .def_readwrite("axis", &wavefront::SurfaceMonitorSpec::axis)
       .def_readwrite("upper_face", &wavefront::SurfaceMonitorSpec::upper_face)
-      .def_readwrite("component", &wavefront::SurfaceMonitorSpec::component);
+      .def_readwrite("component", &wavefront::SurfaceMonitorSpec::component)
+      .def_readwrite("geometry_region", &wavefront::SurfaceMonitorSpec::geometry_region)
+      .def_readwrite("shell_thickness", &wavefront::SurfaceMonitorSpec::shell_thickness);
 
   py::class_<wavefront::MonitorSpec>(m, "MonitorSpec")
       .def(py::init<>())
@@ -219,7 +229,9 @@ PYBIND11_MODULE(_wavefront, m) {
       .def_readwrite("samples", &wavefront::SurfaceFluxResult::samples)
       .def_readwrite("integrated_flux", &wavefront::SurfaceFluxResult::integrated_flux)
       .def_readwrite("reflected_proxy", &wavefront::SurfaceFluxResult::reflected_proxy)
-      .def_readwrite("transmitted_proxy", &wavefront::SurfaceFluxResult::transmitted_proxy);
+      .def_readwrite("transmitted_proxy", &wavefront::SurfaceFluxResult::transmitted_proxy)
+      .def_readwrite("peak_flux", &wavefront::SurfaceFluxResult::peak_flux)
+      .def_readwrite("phase_proxy", &wavefront::SurfaceFluxResult::phase_proxy);
 
   py::class_<wavefront::FarFieldPattern>(m, "FarFieldPattern")
       .def(py::init<>())

@@ -109,3 +109,108 @@ TEST_CASE("geometry regions and extended validation are supported") {
   invalid.geometry.front().upper = invalid.geometry.front().lower;
   CHECK_FALSE(wavefront::validate_problem(invalid, config).empty());
 }
+
+TEST_CASE("polygon and signed-distance regions participate in runtime geometry and validation") {
+  wavefront::ProblemSpec problem;
+  problem.grid.dims = 2;
+  problem.grid.shape = {40, 40};
+  problem.grid.spacing = {0.03, 0.03};
+  problem.grid.origin = {0.0, 0.0};
+  problem.field_components = 1;
+  problem.medium.density.text = "1.0";
+  problem.medium.stiffness.text = "1.0";
+  problem.medium.damping.text = "0.0005";
+  problem.medium.dispersion.text = "0.0";
+  problem.source_term.text =
+      "10*sin(18*t)*exp(-6*t)*exp(-((x_0-0.45)*(x_0-0.45)+(x_1-0.5)*(x_1-0.5))/0.01)";
+  problem.boundaries = {
+      {wavefront::BoundaryType::Periodic, 0, false, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 0, true, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 1, false, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 1, true, wavefront::SymbolicExpr{"0.0"}},
+  };
+
+  wavefront::GeometryRegion polygon;
+  polygon.name = "poly";
+  polygon.shape = wavefront::GeometryShape::Polygon;
+  polygon.vertices = {0.35, 0.35, 0.75, 0.45, 0.60, 0.78, 0.30, 0.70};
+  polygon.medium = wavefront::builtin_material("water").medium;
+  problem.geometry.push_back(polygon);
+
+  wavefront::GeometryRegion sdf;
+  sdf.name = "bubble";
+  sdf.shape = wavefront::GeometryShape::SignedDistanceField;
+  sdf.signed_distance = wavefront::SymbolicExpr{"sqrt((x_0-0.7)*(x_0-0.7)+(x_1-0.3)*(x_1-0.3)) - 0.12"};
+  sdf.medium = wavefront::builtin_material("glass").medium;
+  problem.geometry.push_back(sdf);
+
+  problem.monitors.surfaces.push_back({"poly-shell", 0, false, 0, "poly", 0.03});
+
+  auto baseline = problem;
+  baseline.geometry.clear();
+  baseline.monitors.surfaces.clear();
+
+  auto config = test_common::default_config(wavefront::SolverMode::LinearApprox);
+  config.spatial_order = 2;
+
+  auto solver_with_geometry = wavefront::make_solver(problem, config);
+  auto solver_without_geometry = wavefront::make_solver(baseline, config);
+  solver_with_geometry->run(14);
+  solver_without_geometry->run(14);
+
+  const double with_geometry = solver_with_geometry->sample(std::vector<std::size_t>{20, 20}).at(0);
+  const double without_geometry = solver_without_geometry->sample(std::vector<std::size_t>{20, 20}).at(0);
+  CHECK(with_geometry != doctest::Approx(without_geometry));
+
+  const auto polygon_flux = solver_with_geometry->surface_flux("poly-shell");
+  CHECK(polygon_flux.samples == 15);
+  CHECK(polygon_flux.integrated_flux >= 0.0);
+  CHECK(polygon_flux.peak_flux >= 0.0);
+
+  auto invalid = problem;
+  invalid.monitors.surfaces.front().geometry_region = "missing";
+  CHECK_FALSE(wavefront::validate_problem(invalid, config).empty());
+}
+
+TEST_CASE("fractal geometry regions can drive arbitrary-surface monitors") {
+  wavefront::ProblemSpec problem;
+  problem.grid.dims = 2;
+  problem.grid.shape = {48, 48};
+  problem.grid.spacing = {0.025, 0.025};
+  problem.grid.origin = {0.0, 0.0};
+  problem.field_components = 1;
+  problem.medium.density.text = "1.0";
+  problem.medium.stiffness.text = "1.0";
+  problem.medium.damping.text = "0.0005";
+  problem.medium.dispersion.text = "0.0";
+  problem.source_term.text =
+      "12*sin(20*t)*exp(-8*t)*exp(-((x_0-0.5)*(x_0-0.5)+(x_1-0.5)*(x_1-0.5))/0.008)";
+  problem.boundaries = {
+      {wavefront::BoundaryType::Periodic, 0, false, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 0, true, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 1, false, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 1, true, wavefront::SymbolicExpr{"0.0"}},
+  };
+
+  wavefront::GeometryRegion fractal;
+  fractal.name = "snowflake";
+  fractal.shape = wavefront::GeometryShape::Fractal;
+  fractal.center = {0.6, 0.55};
+  fractal.radius = 0.14;
+  fractal.fractal_generator = "koch_snowflake";
+  fractal.fractal_iterations = 2;
+  fractal.medium = wavefront::builtin_material("steel").medium;
+  problem.geometry.push_back(fractal);
+  problem.monitors.surfaces.push_back({"snow-shell", 0, false, 0, "snowflake", 0.025});
+
+  auto config = test_common::default_config(wavefront::SolverMode::LinearApprox);
+  config.spatial_order = 2;
+  auto solver = wavefront::make_solver(problem, config);
+  solver->run(12);
+
+  const auto flux = solver->surface_flux("snow-shell");
+  CHECK(flux.samples == 13);
+  CHECK(flux.integrated_flux >= 0.0);
+  CHECK(std::isfinite(flux.phase_proxy));
+  CHECK(flux.peak_flux >= 0.0);
+}

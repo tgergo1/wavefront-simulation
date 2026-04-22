@@ -1,5 +1,6 @@
 #include "wavefront/api/problem_validation.hpp"
 
+#include <algorithm>
 #include <sstream>
 #include <stdexcept>
 
@@ -89,12 +90,23 @@ std::vector<ValidationIssue> validate_problem(const ProblemSpec& problem, const 
   }
 
   for (const auto& surface : problem.monitors.surfaces) {
-    if (surface.axis >= problem.grid.dims) {
+    if (surface.geometry_region.empty() && surface.axis >= problem.grid.dims) {
       issues.push_back({"surface monitor axis must be in [0, grid.dims)", true});
       break;
     }
     if (surface.component >= problem.field_components) {
       issues.push_back({"surface monitor component must be in [0, field_components)", true});
+      break;
+    }
+    if (!surface.geometry_region.empty() &&
+        std::none_of(problem.geometry.begin(), problem.geometry.end(), [&](const GeometryRegion& region) {
+          return region.name == surface.geometry_region;
+        })) {
+      issues.push_back({"surface monitor geometry_region must reference an existing geometry region", true});
+      break;
+    }
+    if (surface.shell_thickness < 0.0) {
+      issues.push_back({"surface monitor shell_thickness must be non-negative", true});
       break;
     }
   }
@@ -114,6 +126,29 @@ std::vector<ValidationIssue> validate_problem(const ProblemSpec& problem, const 
         (region.axis >= problem.grid.dims || region.upper <= region.lower)) {
       issues.push_back({"layer geometry regions must have valid axis and upper > lower", true});
       break;
+    }
+    if (region.shape == GeometryShape::Polygon &&
+        (problem.grid.dims != 2 || region.vertices.size() < 6 || region.vertices.size() % 2 != 0)) {
+      issues.push_back({"polygon geometry regions require dims=2 and an even vertex list with at least 3 points", true});
+      break;
+    }
+    if (region.shape == GeometryShape::SignedDistanceField && region.signed_distance.text.empty()) {
+      issues.push_back({"signed-distance geometry regions must provide a signed_distance expression", true});
+      break;
+    }
+    if (region.shape == GeometryShape::Fractal) {
+      if (problem.grid.dims != 2) {
+        issues.push_back({"fractal geometry regions currently require dims=2", true});
+        break;
+      }
+      if (region.fractal_generator != "koch_snowflake") {
+        issues.push_back({"fractal geometry regions currently support fractal_generator='koch_snowflake' only", true});
+        break;
+      }
+      if (region.center.size() != 2 || region.radius <= 0.0) {
+        issues.push_back({"fractal geometry regions require 2D center and positive radius", true});
+        break;
+      }
     }
   }
 

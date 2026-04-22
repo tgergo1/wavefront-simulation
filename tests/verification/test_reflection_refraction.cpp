@@ -102,6 +102,27 @@ TEST_CASE("reflection + transmission energy conservation: R² + (Z1/Z2)·T² = 1
   CHECK(energy == doctest::Approx(1.0).epsilon(1.0e-12));
 }
 
+TEST_CASE("planar interface scattering resolves oblique incidence power budget") {
+  const auto scattering =
+      wavefront::compute_planar_interface_scattering(1.0, 0.3, 1.0, 1.0, 1.5, 3.0);
+  CHECK_FALSE(scattering.total_internal_reflection);
+  CHECK(std::isfinite(scattering.reflected_amplitude));
+  CHECK(std::isfinite(scattering.transmitted_amplitude));
+  CHECK(scattering.reflected_angle_radians == doctest::Approx(0.3));
+  CHECK(scattering.transmitted_angle_radians ==
+        doctest::Approx(wavefront::refraction_angle(0.3, 1.0, std::sqrt(3.0 / 1.5))).epsilon(1.0e-12));
+  CHECK(scattering.reflected_power + scattering.transmitted_power == doctest::Approx(1.0).epsilon(1.0e-10));
+}
+
+TEST_CASE("planar interface scattering reports total internal reflection") {
+  const auto scattering =
+      wavefront::compute_planar_interface_scattering(2.0, 0.8, 1.0, 1.0, 1.0, 100.0);
+  CHECK(scattering.total_internal_reflection);
+  CHECK(scattering.transmitted_amplitude == doctest::Approx(0.0));
+  CHECK(scattering.transmitted_power == doctest::Approx(0.0));
+  CHECK(scattering.reflected_power == doctest::Approx(4.0));
+}
+
 TEST_CASE("impedance-matched media give zero reflection") {
   const double z = 4.0;
   CHECK(wavefront::reflection_coefficient(z, z) == doctest::Approx(0.0));

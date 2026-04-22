@@ -57,6 +57,9 @@ enum class GeometryShape {
   Box,
   Sphere,
   Layer,
+  Polygon,
+  SignedDistanceField,
+  Fractal,
 };
 
 struct GridSpec {
@@ -88,6 +91,11 @@ struct GeometryRegion {
   double lower = 0.0;
   double upper = 0.0;
   MediumLaw medium;
+  std::vector<double> vertices;
+  SymbolicExpr signed_distance{"0.0"};
+  std::string fractal_generator;
+  std::size_t fractal_iterations = 0;
+  double fractal_scale = 1.0;
 };
 
 struct ProbeMonitorSpec {
@@ -102,6 +110,8 @@ struct SurfaceMonitorSpec {
   std::size_t axis = 0;
   bool upper_face = false;
   std::size_t component = 0;
+  std::string geometry_region;
+  double shell_thickness = 0.0;
 };
 
 struct MonitorSpec {
@@ -187,6 +197,8 @@ struct SurfaceFluxResult {
   double integrated_flux = 0.0;
   double reflected_proxy = 0.0;
   double transmitted_proxy = 0.0;
+  double peak_flux = 0.0;
+  double phase_proxy = 0.0;
 };
 
 struct FarFieldPattern {

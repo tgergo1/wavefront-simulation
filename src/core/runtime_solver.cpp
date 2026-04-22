@@ -1,6 +1,7 @@
 #include "runtime_solver.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cctype>
 #include <cmath>
@@ -118,6 +119,8 @@ struct CompiledGeometryRegion {
   CompiledExpression stiffness;
   CompiledExpression damping;
   CompiledExpression dispersion;
+  CompiledExpression signed_distance;
+  std::vector<double> generated_vertices;
 };
 
 struct ExpressionRequirements {
@@ -196,12 +199,87 @@ double parse_boundary_parameter_scalar(const SymbolicExpr& expression, double fa
   return fallback;
 }
 
-bool contains_region(const GeometryRegion& region, std::span<const long double> x) {
-  switch (region.shape) {
+bool point_in_polygon_2d(std::span<const long double> x, const std::vector<double>& vertices) {
+  if (x.size() != 2 || vertices.size() < 6 || vertices.size() % 2 != 0) {
+    return false;
+  }
+
+  const long double px = x[0];
+  const long double py = x[1];
+  bool inside = false;
+  const std::size_t count = vertices.size() / 2;
+  for (std::size_t i = 0, j = count - 1; i < count; j = i++) {
+    const long double xi = static_cast<long double>(vertices[2 * i]);
+    const long double yi = static_cast<long double>(vertices[2 * i + 1]);
+    const long double xj = static_cast<long double>(vertices[2 * j]);
+    const long double yj = static_cast<long double>(vertices[2 * j + 1]);
+    const bool crosses = ((yi > py) != (yj > py)) &&
+                         (px < (xj - xi) * (py - yi) / ((yj - yi) + 1.0e-18L) + xi);
+    if (crosses) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+std::vector<double> build_koch_snowflake_vertices(const GeometryRegion& region) {
+  if (region.fractal_generator != "koch_snowflake") {
+    return region.vertices;
+  }
+
+  const long double cx = region.center.size() >= 1 ? static_cast<long double>(region.center[0]) : 0.0L;
+  const long double cy = region.center.size() >= 2 ? static_cast<long double>(region.center[1]) : 0.0L;
+  const long double radius = static_cast<long double>(region.radius > 0.0 ? region.radius : 0.25);
+  const long double scale = static_cast<long double>(region.fractal_scale > 0.0 ? region.fractal_scale : 1.0);
+  const long double effective_radius = radius * scale;
+  const long double sqrt3_over_2 = std::sqrt(3.0L) * 0.5L;
+
+  std::vector<std::array<long double, 2>> polygon = {
+      {cx, cy + effective_radius},
+      {cx - sqrt3_over_2 * effective_radius, cy - 0.5L * effective_radius},
+      {cx + sqrt3_over_2 * effective_radius, cy - 0.5L * effective_radius},
+  };
+
+  const std::size_t iterations = std::min<std::size_t>(region.fractal_iterations, 6);
+  for (std::size_t iteration = 0; iteration < iterations; ++iteration) {
+    std::vector<std::array<long double, 2>> refined;
+    refined.reserve(polygon.size() * 4);
+    for (std::size_t i = 0; i < polygon.size(); ++i) {
+      const auto& a = polygon[i];
+      const auto& b = polygon[(i + 1) % polygon.size()];
+      const long double dx = b[0] - a[0];
+      const long double dy = b[1] - a[1];
+      const std::array<long double, 2> p1{a[0] + dx / 3.0L, a[1] + dy / 3.0L};
+      const std::array<long double, 2> p3{a[0] + 2.0L * dx / 3.0L, a[1] + 2.0L * dy / 3.0L};
+      const long double cos60 = 0.5L;
+      const long double sin60 = std::sqrt(3.0L) * 0.5L;
+      const std::array<long double, 2> peak{
+          p1[0] + cos60 * (p3[0] - p1[0]) - sin60 * (p3[1] - p1[1]),
+          p1[1] + sin60 * (p3[0] - p1[0]) + cos60 * (p3[1] - p1[1]),
+      };
+      refined.push_back(a);
+      refined.push_back(p1);
+      refined.push_back(peak);
+      refined.push_back(p3);
+    }
+    polygon.swap(refined);
+  }
+
+  std::vector<double> vertices;
+  vertices.reserve(polygon.size() * 2);
+  for (const auto& point : polygon) {
+    vertices.push_back(static_cast<double>(point[0]));
+    vertices.push_back(static_cast<double>(point[1]));
+  }
+  return vertices;
+}
+
+bool contains_region(const CompiledGeometryRegion& region, std::span<const long double> x) {
+  switch (region.spec.shape) {
     case GeometryShape::Box:
       for (std::size_t axis = 0; axis < x.size(); ++axis) {
-        if (x[axis] < static_cast<long double>(region.min_corner[axis]) ||
-            x[axis] > static_cast<long double>(region.max_corner[axis])) {
+        if (x[axis] < static_cast<long double>(region.spec.min_corner[axis]) ||
+            x[axis] > static_cast<long double>(region.spec.max_corner[axis])) {
           return false;
         }
       }
@@ -209,14 +287,23 @@ bool contains_region(const GeometryRegion& region, std::span<const long double> 
     case GeometryShape::Sphere: {
       long double radius_sq = 0.0L;
       for (std::size_t axis = 0; axis < x.size(); ++axis) {
-        const long double delta = x[axis] - static_cast<long double>(region.center[axis]);
+        const long double delta = x[axis] - static_cast<long double>(region.spec.center[axis]);
         radius_sq += delta * delta;
       }
-      return radius_sq <= static_cast<long double>(region.radius * region.radius);
+      return radius_sq <= static_cast<long double>(region.spec.radius * region.spec.radius);
     }
     case GeometryShape::Layer:
-      return x[region.axis] >= static_cast<long double>(region.lower) &&
-             x[region.axis] <= static_cast<long double>(region.upper);
+      return x[region.spec.axis] >= static_cast<long double>(region.spec.lower) &&
+             x[region.spec.axis] <= static_cast<long double>(region.spec.upper);
+    case GeometryShape::Polygon:
+      return point_in_polygon_2d(x, region.spec.vertices);
+    case GeometryShape::SignedDistanceField: {
+      EvaluationContext context;
+      context.x.assign(x.begin(), x.end());
+      return region.signed_distance.evaluate_double(context) <= 0.0;
+    }
+    case GeometryShape::Fractal:
+      return point_in_polygon_2d(x, region.generated_vertices);
   }
   return false;  // GCOVR_EXCL_LINE
 }
@@ -630,6 +717,8 @@ class RuntimeSolver final : public ISolver {
           compile_or_default(region.medium.stiffness, "1.0"),
           compile_or_default(region.medium.damping, "0.0"),
           compile_or_default(region.medium.dispersion, "0.0"),
+          compile_or_default(region.signed_distance, "1.0"),
+          region.shape == GeometryShape::Fractal ? build_koch_snowflake_vertices(region) : std::vector<double>{},
         });
     }
   }
@@ -649,7 +738,7 @@ class RuntimeSolver final : public ISolver {
 
       for (std::size_t offset = 0; offset < geometry_regions_.size(); ++offset) {
         const std::size_t region_index = geometry_regions_.size() - 1 - offset;
-        if (contains_region(geometry_regions_[region_index].spec, coordinates)) {
+        if (contains_region(geometry_regions_[region_index], coordinates)) {
           region_index_cache_[flat] = static_cast<int>(region_index);
           break;
         }
@@ -743,8 +832,48 @@ class RuntimeSolver final : public ISolver {
     surface_flux_results_.clear();
     surface_flux_results_.reserve(problem_.monitors.surfaces.size());
     for (const auto& surface : problem_.monitors.surfaces) {
-      surface_flux_results_.push_back(SurfaceFluxResult{surface.name, 0, 0.0, 0.0, 0.0});
+      surface_flux_results_.push_back(SurfaceFluxResult{surface.name, 0, 0.0, 0.0, 0.0, 0.0, 0.0});
     }
+  }
+
+  struct SurfaceFluxSample {
+    double flux = 0.0;
+    double peak = 0.0;
+    double phase = 0.0;
+  };
+
+  int geometry_region_index_by_name(std::string_view name) const {
+    for (std::size_t i = 0; i < geometry_regions_.size(); ++i) {
+      if (geometry_regions_[i].spec.name == name) {
+        return static_cast<int>(i);
+      }
+    }
+    return -1;
+  }
+
+  bool is_geometry_surface_cell(std::size_t flat, int target_region_index, std::size_t shell_cells) const {
+    if (flat >= region_index_cache_.size() || region_index_cache_[flat] != target_region_index) {
+      return false;
+    }
+
+    const std::vector<std::size_t> index = grid_.unravel_index(flat);
+    for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
+      for (std::size_t step = 1; step <= shell_cells; ++step) {
+        if (index[axis] < step || index[axis] + step >= grid_.shape()[axis]) {
+          return true;
+        }
+
+        auto lower = index;
+        lower[axis] -= step;
+        auto upper = index;
+        upper[axis] += step;
+        if (region_index_cache_[grid_.flatten_index(lower)] != target_region_index ||
+            region_index_cache_[grid_.flatten_index(upper)] != target_region_index) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   const FaceBoundary& face_boundary(std::size_t axis, bool upper) const {
@@ -1152,24 +1281,58 @@ class RuntimeSolver final : public ISolver {
     }
 
     for (std::size_t i = 0; i < problem_.monitors.surfaces.size(); ++i) {
-      const double flux = compute_surface_flux(problem_.monitors.surfaces[i]);
+      const SurfaceFluxSample sample = compute_surface_flux(problem_.monitors.surfaces[i]);
       auto& result = surface_flux_results_[i];
       ++result.samples;
-      result.integrated_flux += flux;
-      if (problem_.monitors.surfaces[i].upper_face) {
-        result.transmitted_proxy += flux;
-      } else {
-        result.reflected_proxy += flux;
+      result.integrated_flux += sample.flux;
+      result.peak_flux = std::max(result.peak_flux, sample.peak);
+      result.phase_proxy += (sample.phase - result.phase_proxy) / static_cast<double>(result.samples);
+      if (problem_.monitors.surfaces[i].geometry_region.empty()) {
+        if (problem_.monitors.surfaces[i].upper_face) {
+          result.transmitted_proxy += sample.flux;
+        } else {
+          result.reflected_proxy += sample.flux;
+        }
       }
     }
   }
 
-  double compute_surface_flux(const SurfaceMonitorSpec& monitor) const {
+  SurfaceFluxSample compute_surface_flux(const SurfaceMonitorSpec& monitor) const {
     if (grid_.dims() == 0) {
-      return 0.0;
+      return {};
     }
 
-    double flux = 0.0;
+    SurfaceFluxSample sample;
+    double phase_sum = 0.0;
+    std::size_t phase_count = 0;
+
+    if (!monitor.geometry_region.empty()) {
+      const int target_region = geometry_region_index_by_name(monitor.geometry_region);
+      if (target_region < 0) {
+        return {};
+      }
+
+      const std::size_t shell_cells =
+          std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(monitor.shell_thickness / grid_.min_spacing())));
+      for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
+        if (!is_geometry_surface_cell(flat, target_region, shell_cells)) {
+          continue;
+        }
+
+        const double value = current_.at_flat(flat, monitor.component);
+        const double velocity = (current_.at_flat(flat, monitor.component) - previous_.at_flat(flat, monitor.component)) / dt_;
+        const double local_flux = std::fabs(value * velocity);
+        sample.flux += local_flux;
+        sample.peak = std::max(sample.peak, local_flux);
+        if (std::fabs(value) > 1.0e-15 || std::fabs(velocity) > 1.0e-15) {
+          phase_sum += std::atan2(velocity, value);
+          ++phase_count;
+        }
+      }
+      sample.phase = phase_count > 0 ? phase_sum / static_cast<double>(phase_count) : 0.0;
+      return sample;
+    }
+
     for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
       const std::vector<std::size_t> index = grid_.unravel_index(flat);
       const std::size_t face_index = monitor.upper_face ? (grid_.shape()[monitor.axis] - 1) : 0;
@@ -1179,9 +1342,16 @@ class RuntimeSolver final : public ISolver {
 
       const double value = current_.at_flat(flat, monitor.component);
       const double velocity = (current_.at_flat(flat, monitor.component) - previous_.at_flat(flat, monitor.component)) / dt_;
-      flux += std::fabs(value * velocity);
+      const double local_flux = std::fabs(value * velocity);
+      sample.flux += local_flux;
+      sample.peak = std::max(sample.peak, local_flux);
+      if (std::fabs(value) > 1.0e-15 || std::fabs(velocity) > 1.0e-15) {
+        phase_sum += std::atan2(velocity, value);
+        ++phase_count;
+      }
     }
-    return flux;
+    sample.phase = phase_count > 0 ? phase_sum / static_cast<double>(phase_count) : 0.0;
+    return sample;
   }
 
   std::vector<double> extract_axis_line(std::size_t component) const {
