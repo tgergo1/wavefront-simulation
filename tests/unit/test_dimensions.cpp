@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../test_common.hpp"
+#include "wavefront/material/library.hpp"
 #include "wavefront/core/solver_nd.hpp"
 
 // ---------------------------------------------------------------------------
@@ -261,6 +262,59 @@ TEST_CASE("4D SolverND with multiple field components") {
   CHECK(std::isfinite(solver.sample({2, 2, 2, 2}, 0)));
   CHECK(std::isfinite(solver.sample({2, 2, 2, 2}, 1)));
   CHECK(std::isfinite(solver.sample({2, 2, 2, 2}, 2)));
+}
+
+TEST_CASE("4D runtime solver supports honey and hyperhoney style media") {
+  wavefront::ProblemSpec problem;
+  problem.grid.dims = 4;
+  problem.grid.shape = {7, 7, 7, 7};
+  problem.grid.spacing = {0.15, 0.15, 0.15, 0.15};
+  problem.grid.origin = {0.0, 0.0, 0.0, 0.0};
+  problem.field_components = 1;
+  problem.medium = wavefront::builtin_material("honey").medium;
+  problem.source_term.text =
+      "sin(18*t)*exp(-6*t)*exp(-((x_0-0.45)*(x_0-0.45)+(x_1-0.45)*(x_1-0.45)+(x_2-0.45)*(x_2-0.45)+(x_3-0.45)*(x_3-0.45))/0.02)";
+  problem.boundaries = {
+      {wavefront::BoundaryType::Periodic, 0, false, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 0, true, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 1, false, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 1, true, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 2, false, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 2, true, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 3, false, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 3, true, wavefront::SymbolicExpr{"0.0"}},
+  };
+  problem.geometry.push_back({"hyper-layer",
+                              wavefront::GeometryShape::Layer,
+                              {},
+                              {},
+                              {},
+                              0.0,
+                              3,
+                              0.45,
+                              0.90,
+                              wavefront::builtin_material("hyperhoney").medium});
+
+  auto baseline = problem;
+  baseline.geometry.clear();
+
+  auto config = test_common::default_config(wavefront::SolverMode::LinearApprox);
+  config.family = wavefront::SolverFamily::AngularSpectrum;
+
+  auto solver = wavefront::make_solver(problem, config);
+  auto baseline_solver = wavefront::make_solver(baseline, config);
+  solver->run(6);
+  baseline_solver->run(6);
+
+  const auto exotic_sample = solver->sample(std::vector<std::size_t>{3, 3, 3, 5});
+  const auto baseline_sample = baseline_solver->sample(std::vector<std::size_t>{3, 3, 3, 5});
+  CHECK(exotic_sample.size() == 1);
+  CHECK(std::isfinite(exotic_sample[0]));
+  CHECK(exotic_sample[0] != doctest::Approx(baseline_sample[0]));
+
+  const std::string diagnostics = solver->diagnostics_json();
+  CHECK(diagnostics.find("\"dims\":4") != std::string::npos);
+  CHECK(diagnostics.find("\"geometry_regions\":1") != std::string::npos);
 }
 
 // ---------------------------------------------------------------------------

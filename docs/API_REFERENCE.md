@@ -107,7 +107,7 @@ Key meanings:
 
 - `ProblemSpec::geometry` accepts `GeometryRegion` entries with `Box`, `Sphere`, and `Layer` shapes.
 - `ProblemSpec::monitors` accepts probe/surface monitor suites.
-- Built-in material presets: `include/wavefront/material/library.hpp`
+- Built-in material presets: `include/wavefront/material/library.hpp` (`air`, `water`, `glass`, `steel`, `honey`, `hyperhoney`, `oobleck`, `aerogel`, `ferrofluid`, `plasma`, `metamaterial`, `neutron_star_crust`, `strange_matter`)
 
 GeometryRegion highlights:
 
