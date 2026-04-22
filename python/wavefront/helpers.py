@@ -1,6 +1,15 @@
 """High-level helper builders for wavefront-simulation."""
 
-from ._wavefront import GeometryRegion, GeometryShape, MediumLaw, ProbeMonitorSpec, SurfaceMonitorSpec, SymbolicExpr
+from ._wavefront import (
+    CollisionMonitorSpec,
+    GeometryRegion,
+    GeometryShape,
+    MediumLaw,
+    ProbeMonitorSpec,
+    SurfaceMonitorSpec,
+    SymbolicExpr,
+    WaveSourceSpec,
+)
 
 
 def builtin_material(name: str) -> MediumLaw:
@@ -101,4 +110,45 @@ def make_geometry_surface_monitor(name: str, geometry_region: str, component: in
     monitor.component = component
     monitor.geometry_region = geometry_region
     monitor.shell_thickness = shell_thickness
+    return monitor
+
+
+def make_wave_source(name: str, expression: str, wave_id: str | None = None, wave_class: str | None = None) -> WaveSourceSpec:
+    source = WaveSourceSpec()
+    source.name = name
+    source.wave_id = wave_id or name
+    source.wave_class = wave_class or source.wave_id
+    source.term = SymbolicExpr(expression)
+    return source
+
+
+def make_collision_monitor(
+    name: str,
+    axis: int,
+    upper_face: bool,
+    component: int = 0,
+    threshold: float = 0.0,
+) -> CollisionMonitorSpec:
+    monitor = CollisionMonitorSpec()
+    monitor.name = name
+    monitor.axis = axis
+    monitor.upper_face = upper_face
+    monitor.component = component
+    monitor.threshold = threshold
+    return monitor
+
+
+def make_geometry_collision_monitor(
+    name: str,
+    geometry_region: str,
+    component: int = 0,
+    shell_thickness: float = 0.0,
+    threshold: float = 0.0,
+) -> CollisionMonitorSpec:
+    monitor = CollisionMonitorSpec()
+    monitor.name = name
+    monitor.component = component
+    monitor.geometry_region = geometry_region
+    monitor.shell_thickness = shell_thickness
+    monitor.threshold = threshold
     return monitor

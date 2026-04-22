@@ -36,6 +36,7 @@ class PySolver {
     return impl_->probe_spectrum(name, bins);
   }
   wavefront::SurfaceFluxResult surface_flux(const std::string& name) const { return impl_->surface_flux(name); }
+  wavefront::CollisionSurfaceResult collision_surface(const std::string& name) const { return impl_->collision_surface(name); }
   wavefront::FarFieldPattern far_field_pattern(std::size_t samples = 0) const { return impl_->far_field_pattern(samples); }
   void save_checkpoint(const std::string& path) const { impl_->save_checkpoint(path); }
   void load_checkpoint(const std::string& path) { impl_->load_checkpoint(path); }
@@ -131,6 +132,13 @@ PYBIND11_MODULE(_wavefront, m) {
       .def_readwrite("fractal_iterations", &wavefront::GeometryRegion::fractal_iterations)
       .def_readwrite("fractal_scale", &wavefront::GeometryRegion::fractal_scale);
 
+  py::class_<wavefront::WaveSourceSpec>(m, "WaveSourceSpec")
+      .def(py::init<>())
+      .def_readwrite("name", &wavefront::WaveSourceSpec::name)
+      .def_readwrite("wave_id", &wavefront::WaveSourceSpec::wave_id)
+      .def_readwrite("wave_class", &wavefront::WaveSourceSpec::wave_class)
+      .def_readwrite("term", &wavefront::WaveSourceSpec::term);
+
   py::class_<wavefront::ProbeMonitorSpec>(m, "ProbeMonitorSpec")
       .def(py::init<>())
       .def_readwrite("name", &wavefront::ProbeMonitorSpec::name)
@@ -147,10 +155,21 @@ PYBIND11_MODULE(_wavefront, m) {
       .def_readwrite("geometry_region", &wavefront::SurfaceMonitorSpec::geometry_region)
       .def_readwrite("shell_thickness", &wavefront::SurfaceMonitorSpec::shell_thickness);
 
+  py::class_<wavefront::CollisionMonitorSpec>(m, "CollisionMonitorSpec")
+      .def(py::init<>())
+      .def_readwrite("name", &wavefront::CollisionMonitorSpec::name)
+      .def_readwrite("axis", &wavefront::CollisionMonitorSpec::axis)
+      .def_readwrite("upper_face", &wavefront::CollisionMonitorSpec::upper_face)
+      .def_readwrite("component", &wavefront::CollisionMonitorSpec::component)
+      .def_readwrite("geometry_region", &wavefront::CollisionMonitorSpec::geometry_region)
+      .def_readwrite("shell_thickness", &wavefront::CollisionMonitorSpec::shell_thickness)
+      .def_readwrite("threshold", &wavefront::CollisionMonitorSpec::threshold);
+
   py::class_<wavefront::MonitorSpec>(m, "MonitorSpec")
       .def(py::init<>())
       .def_readwrite("probes", &wavefront::MonitorSpec::probes)
       .def_readwrite("surfaces", &wavefront::MonitorSpec::surfaces)
+      .def_readwrite("collisions", &wavefront::MonitorSpec::collisions)
       .def_readwrite("snapshot_interval", &wavefront::MonitorSpec::snapshot_interval)
       .def_readwrite("spectrum_bins", &wavefront::MonitorSpec::spectrum_bins)
       .def_readwrite("enable_far_field", &wavefront::MonitorSpec::enable_far_field);
@@ -170,6 +189,7 @@ PYBIND11_MODULE(_wavefront, m) {
       .def_readwrite("boundaries", &wavefront::ProblemSpec::boundaries)
       .def_readwrite("monitors", &wavefront::ProblemSpec::monitors)
       .def_readwrite("source_term", &wavefront::ProblemSpec::source_term)
+      .def_readwrite("sources", &wavefront::ProblemSpec::sources)
       .def_readwrite("field_components", &wavefront::ProblemSpec::field_components)
       .def_readwrite("wave_type", &wavefront::ProblemSpec::wave_type);
 
@@ -233,6 +253,26 @@ PYBIND11_MODULE(_wavefront, m) {
       .def_readwrite("peak_flux", &wavefront::SurfaceFluxResult::peak_flux)
       .def_readwrite("phase_proxy", &wavefront::SurfaceFluxResult::phase_proxy);
 
+  py::class_<wavefront::CollisionPairResult>(m, "CollisionPairResult")
+      .def(py::init<>())
+      .def_readwrite("left_label", &wavefront::CollisionPairResult::left_label)
+      .def_readwrite("right_label", &wavefront::CollisionPairResult::right_label)
+      .def_readwrite("samples", &wavefront::CollisionPairResult::samples)
+      .def_readwrite("integrated_collision", &wavefront::CollisionPairResult::integrated_collision)
+      .def_readwrite("peak_collision", &wavefront::CollisionPairResult::peak_collision);
+
+  py::class_<wavefront::CollisionSurfaceResult>(m, "CollisionSurfaceResult")
+      .def(py::init<>())
+      .def_readwrite("name", &wavefront::CollisionSurfaceResult::name)
+      .def_readwrite("samples", &wavefront::CollisionSurfaceResult::samples)
+      .def_readwrite("integrated_collision", &wavefront::CollisionSurfaceResult::integrated_collision)
+      .def_readwrite("peak_collision", &wavefront::CollisionSurfaceResult::peak_collision)
+      .def_readwrite("self_activity", &wavefront::CollisionSurfaceResult::self_activity)
+      .def_readwrite("reflected_collision", &wavefront::CollisionSurfaceResult::reflected_collision)
+      .def_readwrite("transmitted_collision", &wavefront::CollisionSurfaceResult::transmitted_collision)
+      .def_readwrite("wave_pairs", &wavefront::CollisionSurfaceResult::wave_pairs)
+      .def_readwrite("class_pairs", &wavefront::CollisionSurfaceResult::class_pairs);
+
   py::class_<wavefront::FarFieldPattern>(m, "FarFieldPattern")
       .def(py::init<>())
       .def_readwrite("step", &wavefront::FarFieldPattern::step)
@@ -250,6 +290,7 @@ PYBIND11_MODULE(_wavefront, m) {
       .def("probe_history", &PySolver::probe_history, py::arg("name") = "")
       .def("probe_spectrum", &PySolver::probe_spectrum, py::arg("name"), py::arg("bins") = 0)
       .def("surface_flux", &PySolver::surface_flux, py::arg("name"))
+      .def("collision_surface", &PySolver::collision_surface, py::arg("name"))
       .def("far_field_pattern", &PySolver::far_field_pattern, py::arg("samples") = 0)
       .def("save_checkpoint", &PySolver::save_checkpoint, py::arg("path"))
       .def("load_checkpoint", &PySolver::load_checkpoint, py::arg("path"))

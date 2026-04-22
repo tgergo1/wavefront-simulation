@@ -214,3 +214,90 @@ TEST_CASE("fractal geometry regions can drive arbitrary-surface monitors") {
   CHECK(std::isfinite(flux.phase_proxy));
   CHECK(flux.peak_flux >= 0.0);
 }
+
+TEST_CASE("runtime solver tracks multi-source collisions and persists collision monitors") {
+  wavefront::ProblemSpec problem;
+  problem.grid.dims = 1;
+  problem.grid.shape = {96};
+  problem.grid.spacing = {0.02};
+  problem.grid.origin = {0.0};
+  problem.field_components = 1;
+  problem.medium.density.text = "1.0";
+  problem.medium.stiffness.text = "1.0";
+  problem.medium.damping.text = "0.0005";
+  problem.medium.dispersion.text = "0.0";
+  problem.source_term.text = "0.0";
+  problem.boundaries = {
+      {wavefront::BoundaryType::Periodic, 0, false, wavefront::SymbolicExpr{"0.0"}},
+      {wavefront::BoundaryType::Periodic, 0, true, wavefront::SymbolicExpr{"0.0"}},
+  };
+  problem.sources = {
+      {"left", "left", "incident", wavefront::SymbolicExpr{"18*sin(22*t)*exp(-9*t)*exp(-((x_0-0.32)*(x_0-0.32))/0.004)"}},
+      {"right", "right", "incident", wavefront::SymbolicExpr{"18*sin(22*t)*exp(-9*t)*exp(-((x_0-1.58)*(x_0-1.58))/0.004)"}},
+      {"scatter", "scatter", "scatter", wavefront::SymbolicExpr{"10*sin(18*t)*exp(-10*t)*exp(-((x_0-0.95)*(x_0-0.95))/0.0025)"}},
+  };
+
+  wavefront::GeometryRegion centre_layer;
+  centre_layer.name = "centre-layer";
+  centre_layer.shape = wavefront::GeometryShape::Layer;
+  centre_layer.axis = 0;
+  centre_layer.lower = 0.88;
+  centre_layer.upper = 1.04;
+  centre_layer.medium = wavefront::builtin_material("water").medium;
+  problem.geometry.push_back(centre_layer);
+  problem.monitors.collisions.push_back({"centre-collision", 0, false, 0, "centre-layer", 0.02, 0.0});
+
+  auto config = test_common::default_config(wavefront::SolverMode::LinearApprox);
+  config.spatial_order = 2;
+  auto solver = wavefront::make_solver(problem, config);
+  solver->run(36);
+
+  const auto collision = solver->collision_surface("centre-collision");
+  CHECK(collision.samples == 37);
+  CHECK(collision.integrated_collision > 0.0);
+  CHECK(collision.peak_collision >= 0.0);
+  CHECK(collision.self_activity > 0.0);
+  REQUIRE(collision.wave_pairs.size() == 3);
+  REQUIRE(collision.class_pairs.size() == 1);
+  CHECK(collision.class_pairs.front().left_label == "incident");
+  CHECK(collision.class_pairs.front().right_label == "scatter");
+
+  const std::filesystem::path tmp_dir = std::filesystem::temp_directory_path() / "wavefront-collision-api";
+  std::filesystem::create_directories(tmp_dir);
+  const std::filesystem::path checkpoint_path = tmp_dir / "collision.chk";
+  const std::filesystem::path csv_path = tmp_dir / "collision.csv";
+
+  solver->save_checkpoint(checkpoint_path.string());
+  solver->export_field_csv(csv_path.string());
+
+  auto restored = wavefront::make_solver(problem, config);
+  restored->load_checkpoint(checkpoint_path.string());
+  const auto restored_collision = restored->collision_surface("centre-collision");
+  CHECK(restored_collision.integrated_collision == doctest::Approx(collision.integrated_collision));
+  CHECK(restored_collision.wave_pairs.size() == collision.wave_pairs.size());
+  CHECK(restored_collision.class_pairs.size() == collision.class_pairs.size());
+
+  std::ifstream csv(csv_path);
+  REQUIRE(csv.good());
+  std::string header;
+  std::getline(csv, header);
+  CHECK(header == "flat,component,value,real,imaginary,collision_activity,self_activity,dominant_wave_pair,dominant_class_pair");
+}
+
+TEST_CASE("collision monitors keep self activity separate from cross-wave collisions") {
+  auto problem = test_common::default_problem_1d(72);
+  problem.source_term.text = "12*sin(18*t)*exp(-8*t)*exp(-((x_0-0.72)*(x_0-0.72))/0.005)";
+  problem.geometry.push_back({"probe-layer", wavefront::GeometryShape::Layer, {}, {}, {}, 0.0, 0, 0.62, 0.82, {}});
+  problem.monitors.collisions.push_back({"self-only", 0, false, 0, "probe-layer", 0.02, 0.0});
+
+  auto config = test_common::default_config(wavefront::SolverMode::LinearApprox);
+  config.spatial_order = 2;
+  auto solver = wavefront::make_solver(problem, config);
+  solver->run(18);
+
+  const auto collision = solver->collision_surface("self-only");
+  CHECK(collision.integrated_collision == doctest::Approx(0.0));
+  CHECK(collision.self_activity > 0.0);
+  CHECK(collision.wave_pairs.empty());
+  CHECK(collision.class_pairs.empty());
+}

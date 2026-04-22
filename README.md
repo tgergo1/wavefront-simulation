@@ -101,7 +101,7 @@ metrics are all exercised in one place by `examples/generate_readme_gifs.py`.
 - Boundary operators: Dirichlet, Neumann, Robin, Periodic, Impedance, PML
 - Interface physics helpers for reflection/refraction/mode-conversion calculations
 - Geometry/material regions: box, sphere, layer, polygon, signed-distance, and finite fractal overrides on top of symbolic background media
-- Result APIs: full-field snapshots, probe histories/spectra, boundary-face or arbitrary-geometry surface flux monitors, far-field patterns
+- Result APIs: full-field snapshots, probe histories/spectra, boundary-face or arbitrary-geometry surface flux monitors, multi-source collision surface monitors, far-field patterns
 - Bulk data I/O: CSV field export plus checkpoint save/load
 - Complex phasor snapshots and backend-selection diagnostics
 - Built-in material presets (including honey, hyperhoney, oobleck, ferrofluid, aerogel, plasma, metamaterial, and dense compact-object media), parameter sweeps, finite-difference gradients, and plotting helpers

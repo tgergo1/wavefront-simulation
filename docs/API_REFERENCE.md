@@ -29,9 +29,11 @@ Key meanings:
 - `SymbolicExpr`
 - `MediumLaw`
 - `GeometryRegion`
+- `WaveSourceSpec`
 - `BoundarySpec`
 - `ProbeMonitorSpec`
 - `SurfaceMonitorSpec`
+- `CollisionMonitorSpec`
 - `MonitorSpec`
 - `ProblemSpec`
 - `SolverConfig`
@@ -40,6 +42,8 @@ Key meanings:
 - `ProbeSample`
 - `SpectrumSample`
 - `SurfaceFluxResult`
+- `CollisionPairResult`
+- `CollisionSurfaceResult`
 - `FarFieldPattern`
 
 ### Solver lifecycle
@@ -61,6 +65,7 @@ Key meanings:
 - `boundaries`: per-axis face boundary conditions
 - `monitors`: probe, surface, snapshot, spectrum, and far-field configuration
 - `source_term`: symbolic source expression
+- `sources`: explicit multi-source wave definitions with per-source `wave_id` and mergeable `wave_class`
 - `field_components`: scalar field count or vector components for longitudinal runs
 - `wave_type`: `Transverse` or `Longitudinal`
 
@@ -92,6 +97,8 @@ Key meanings:
   - returns a DFT-style magnitude spectrum over the stored probe history
 - `SurfaceFluxResult surface_flux(std::string_view name)`
   - returns integrated surface flux plus reflected/transmitted proxies
+- `CollisionSurfaceResult collision_surface(std::string_view name)`
+  - returns cumulative cross-wave collision activity, self activity, and pairwise wave/class summaries for a named collision monitor
 - `FarFieldPattern far_field_pattern(std::size_t samples = 0)`
   - returns angular samples and amplitudes for a near-to-far diagnostic
 - `std::string diagnostics_json()`
@@ -127,6 +134,18 @@ Surface monitor highlights:
 - Arbitrary-surface monitors set `geometry_region` to a named region and optionally `shell_thickness`
 - `SurfaceFluxResult` now also reports `peak_flux` and `phase_proxy`
 
+Wave source highlights:
+
+- `WaveSourceSpec` lets a problem define multiple symbolic sources instead of only `source_term`
+- `wave_id` identifies a tracked wavefront; `wave_class` merges multiple source entries into one logical collision class
+- when `sources` is empty, `source_term` remains the backward-compatible single-wave shorthand
+
+Collision monitor highlights:
+
+- `CollisionMonitorSpec` mirrors boundary-face and named-geometry surface selection from `SurfaceMonitorSpec`
+- `CollisionSurfaceResult` separates `self_activity` from cross-wave `integrated_collision`
+- pairwise results are exposed in both `wave_pairs` and merged `class_pairs`
+
 ### Optimization and helper utilities
 
 - Parameter sweeps and finite-difference gradients: `include/wavefront/optimization/sweep.hpp`
@@ -150,7 +169,8 @@ Exposed symbols:
 - `ExecutionBackend`, `FieldRepresentation`, `GeometryShape`
 - `GridSpec`, `SymbolicExpr`, `MediumLaw`, `GeometryRegion`, `BoundarySpec`
 - `ProbeMonitorSpec`, `SurfaceMonitorSpec`, `MonitorSpec`, `ProblemSpec`, `SolverConfig`
-- `ComplexValue`, `FieldSnapshot`, `ProbeSample`, `SpectrumSample`, `SurfaceFluxResult`, `FarFieldPattern`
+- `CollisionMonitorSpec`, `WaveSourceSpec`
+- `ComplexValue`, `FieldSnapshot`, `ProbeSample`, `SpectrumSample`, `SurfaceFluxResult`, `CollisionPairResult`, `CollisionSurfaceResult`, `FarFieldPattern`
 - `Solver`
 
 Constructor parity:
@@ -166,6 +186,7 @@ Methods parity:
 - `probe_history(name: str = "") -> list[ProbeSample]`
 - `probe_spectrum(name: str, bins: int = 0) -> list[SpectrumSample]`
 - `surface_flux(name: str) -> SurfaceFluxResult`
+- `collision_surface(name: str) -> CollisionSurfaceResult`
 - `far_field_pattern(samples: int = 0) -> FarFieldPattern`
 - `save_checkpoint(path: str)`
 - `load_checkpoint(path: str)`
@@ -183,6 +204,9 @@ Common Python helper functions:
 - `make_layer_region(name, axis, lower, upper, material)`
 - `make_probe_monitor(name, index, component=0, capture_complex=False)`
 - `make_surface_monitor(name, axis, upper_face, component=0)`
+- `make_collision_monitor(name, axis, upper_face, component=0, threshold=0.0)`
+- `make_geometry_collision_monitor(name, geometry_region, component=0, shell_thickness=0.0, threshold=0.0)`
+- `make_wave_source(name, expression, wave_id=None, wave_class=None)`
 - `snapshot_component_series(snapshot, component=0)`
 - `snapshot_minmax(snapshot)`
 - `normalize_series(values)`
