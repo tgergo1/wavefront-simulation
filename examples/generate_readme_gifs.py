@@ -31,6 +31,8 @@ ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "docs" / "assets"
 CHECKS_DIR = ASSETS / "_checks"
 VALIDATION_SUMMARY: dict[str, dict[str, float | int]] = {}
+# Lower bound for the log-scaled collision panel: below this, the cross-wave signal
+# is too faint to read in the README animation and the scenario is treated as invalid.
 MIN_VISIBLE_COLLISION_ACTIVITY = 1.0e-5
 COLLISION_MONITOR_THRESHOLD = 1.0e-7
 COLLISION_WARMUP_STEPS = 36
@@ -302,14 +304,20 @@ def load_csv_scalar_panel(path: Path, nx: int, ny: int, column: str, *, componen
     with path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         if reader.fieldnames is None or column not in reader.fieldnames:
-            raise RuntimeError(f"CSV export {path} is missing required column '{column}'.")
+            raise RuntimeError(
+                f"CSV export {path} is missing required column '{column}'. "
+                f"Available columns: {reader.fieldnames}"
+            )
         for row in reader:
             if int(row["component"]) != component:
                 continue
             flat = int(row["flat"])
             x = flat % nx
             y = flat // nx
-            panel[y][x] = float(row.get(column) or "0.0")
+            value = row.get(column, "0.0")
+            if value == "":
+                value = "0.0"
+            panel[y][x] = float(value)
     return panel
 
 
