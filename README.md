@@ -71,13 +71,13 @@ The 3 × 3 grid visualises this directly:
 
 ![4D hyperslice grid](docs/assets/wavefield-4d-hyperslice.gif)
 
-### 9) Collision Wavefront Visualisation
+### 9) Collision Wavefront Visualization
 
 Head-on sources collide inside the highlighted centre strip. Left: aggregate field.
 Middle: per-cell `collision_activity` exported by `export_field_csv()`. Right: per-cell
 `self_activity`, showing same-wave energy separately from cross-wave collisions.
 
-![Collision wavefront visualisation](docs/assets/wavefield-collision-wavefronts.gif)
+![Collision wavefront visualization](docs/assets/wavefield-collision-wavefronts.gif)
 
 ### 10) Monitor / Spectrum / Far-Field Analysis
 

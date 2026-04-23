@@ -32,6 +32,8 @@ ASSETS = ROOT / "docs" / "assets"
 CHECKS_DIR = ASSETS / "_checks"
 VALIDATION_SUMMARY: dict[str, dict[str, float | int]] = {}
 MIN_VISIBLE_COLLISION_ACTIVITY = 1.0e-5
+COLLISION_MONITOR_THRESHOLD = 1.0e-7
+COLLISION_WARMUP_STEPS = 36
 
 
 RGB = Tuple[int, int, int]
@@ -1843,6 +1845,14 @@ def scenario_collision_wavefronts() -> Path:
     ny = 56
     frames = 72
     steps_per_frame = 4
+    source_amplitude = 18.0
+    source_frequency = 24.0
+    source_decay = 16.0
+    source_center_y = 0.50
+    source_sigma_x = 0.0012
+    source_sigma_y = 0.040
+    left_source_x = 0.18
+    right_source_x = 0.82
 
     problem = make_problem(
         nx,
@@ -1859,14 +1869,18 @@ def scenario_collision_wavefronts() -> Path:
     left_source.wave_id = "left"
     left_source.wave_class = "left"
     left_source.term = wf.SymbolicExpr(
-        "18.0*sin(24*t)*exp(-16*t)*exp(-((x_0-0.18)*(x_0-0.18))/0.0012)*exp(-((x_1-0.50)*(x_1-0.50))/0.040)"
+        f"{source_amplitude:.1f}*sin({source_frequency:.1f}*t)*exp(-{source_decay:.1f}*t)"
+        f"*exp(-((x_0-{left_source_x:.2f})*(x_0-{left_source_x:.2f}))/{source_sigma_x:.4f})"
+        f"*exp(-((x_1-{source_center_y:.2f})*(x_1-{source_center_y:.2f}))/{source_sigma_y:.3f})"
     )
     right_source = wf.WaveSourceSpec()
     right_source.name = "right-wave"
     right_source.wave_id = "right"
     right_source.wave_class = "right"
     right_source.term = wf.SymbolicExpr(
-        "18.0*sin(24*t)*exp(-16*t)*exp(-((x_0-0.82)*(x_0-0.82))/0.0012)*exp(-((x_1-0.50)*(x_1-0.50))/0.040)"
+        f"{source_amplitude:.1f}*sin({source_frequency:.1f}*t)*exp(-{source_decay:.1f}*t)"
+        f"*exp(-((x_0-{right_source_x:.2f})*(x_0-{right_source_x:.2f}))/{source_sigma_x:.4f})"
+        f"*exp(-((x_1-{source_center_y:.2f})*(x_1-{source_center_y:.2f}))/{source_sigma_y:.3f})"
     )
     problem.sources = [left_source, right_source]
 
@@ -1884,12 +1898,12 @@ def scenario_collision_wavefronts() -> Path:
     collision_monitor.component = 0
     collision_monitor.geometry_region = "collision-band"
     collision_monitor.shell_thickness = 0.04
-    collision_monitor.threshold = 1.0e-7
+    collision_monitor.threshold = COLLISION_MONITOR_THRESHOLD
     problem.monitors.collisions = [collision_monitor]
 
     solver = wf.Solver(problem, make_config(wf.SolverMode.LinearApprox))
     # Let the two broad wave packets propagate into the center strip before sampling frames.
-    solver.run(36)
+    solver.run(COLLISION_WARMUP_STEPS)
 
     overlay: Overlay2D = [[0 for _ in range(nx)] for _ in range(ny)]
     x_lo = int(0.48 * (nx - 1))
