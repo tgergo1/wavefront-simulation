@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "docs" / "assets"
 CHECKS_DIR = ASSETS / "_checks"
 VALIDATION_SUMMARY: dict[str, dict[str, float | int]] = {}
+MIN_VISIBLE_COLLISION_ACTIVITY = 1.0e-5
 
 
 RGB = Tuple[int, int, int]
@@ -298,7 +299,7 @@ def load_csv_scalar_panel(path: Path, nx: int, ny: int, column: str, *, componen
             flat = int(row["flat"])
             x = flat % nx
             y = flat // nx
-            panel[y][x] = float(row.get(column, "0.0") or 0.0)
+            panel[y][x] = float(row.get(column) or "0.0")
     return panel
 
 
@@ -1887,6 +1888,7 @@ def scenario_collision_wavefronts() -> Path:
     problem.monitors.collisions = [collision_monitor]
 
     solver = wf.Solver(problem, make_config(wf.SolverMode.LinearApprox))
+    # Let the two broad wave packets propagate into the center strip before sampling frames.
     solver.run(36)
 
     overlay: Overlay2D = [[0 for _ in range(nx)] for _ in range(ny)]
@@ -1915,8 +1917,10 @@ def scenario_collision_wavefronts() -> Path:
     collision = solver.collision_surface("collision-band")
     if collision.integrated_collision <= 0.0:
         raise RuntimeError("Collision demo invalid: collision monitor stayed at zero.")
-    if peak_collision < 1.0e-5:
-        raise RuntimeError(f"Collision demo invalid: exported collision activity stayed trivial ({peak_collision:.3e}).")
+    if peak_collision < MIN_VISIBLE_COLLISION_ACTIVITY:
+        raise RuntimeError(
+            f"Collision demo invalid: exported collision activity stayed trivial ({peak_collision:.3e})."
+        )
     if peak_self < peak_collision:
         raise RuntimeError(
             f"Collision demo invalid: self activity unexpectedly weaker than collision activity "
