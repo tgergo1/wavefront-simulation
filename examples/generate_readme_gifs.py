@@ -9,6 +9,7 @@ Requirements:
 from __future__ import annotations
 
 import binascii
+import csv
 import json
 import math
 import shutil
@@ -285,6 +286,20 @@ def sample_field(solver: "wf.Solver", nx: int, ny: int) -> Field2D:
             row.append(float(solver.sample([x, y])[0]))
         field.append(row)
     return field
+
+
+def load_csv_scalar_panel(path: Path, nx: int, ny: int, column: str, *, component: int = 0) -> Field2D:
+    panel: Field2D = [[0.0 for _ in range(nx)] for _ in range(ny)]
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            if int(row["component"]) != component:
+                continue
+            flat = int(row["flat"])
+            x = flat % nx
+            y = flat // nx
+            panel[y][x] = float(row.get(column, "0.0") or 0.0)
+    return panel
 
 
 def snapshot_panel(snapshot: "wf.FieldSnapshot", nx: int, ny: int, *, magnitude: bool = False) -> Field2D:
@@ -1822,6 +1837,115 @@ def scenario_monitor_analysis() -> Path:
     )
 
 
+def scenario_collision_wavefronts() -> Path:
+    nx = 84
+    ny = 56
+    frames = 72
+    steps_per_frame = 4
+
+    problem = make_problem(
+        nx,
+        ny,
+        density_expr="1.0",
+        stiffness_expr="1.25",
+        source_expr="0.0",
+        damping_expr="0.0005",
+        dispersion_expr="0.0",
+        boundaries=pml_boundaries("12.0"),
+    )
+    left_source = wf.WaveSourceSpec()
+    left_source.name = "left-wave"
+    left_source.wave_id = "left"
+    left_source.wave_class = "left"
+    left_source.term = wf.SymbolicExpr(
+        "18.0*sin(24*t)*exp(-16*t)*exp(-((x_0-0.18)*(x_0-0.18))/0.0012)*exp(-((x_1-0.50)*(x_1-0.50))/0.040)"
+    )
+    right_source = wf.WaveSourceSpec()
+    right_source.name = "right-wave"
+    right_source.wave_id = "right"
+    right_source.wave_class = "right"
+    right_source.term = wf.SymbolicExpr(
+        "18.0*sin(24*t)*exp(-16*t)*exp(-((x_0-0.82)*(x_0-0.82))/0.0012)*exp(-((x_1-0.50)*(x_1-0.50))/0.040)"
+    )
+    problem.sources = [left_source, right_source]
+
+    centre_layer = wf.GeometryRegion()
+    centre_layer.name = "collision-band"
+    centre_layer.shape = wf.GeometryShape.Layer
+    centre_layer.axis = 0
+    centre_layer.lower = 0.48
+    centre_layer.upper = 0.52
+    centre_layer.medium = problem.medium
+    problem.geometry = [centre_layer]
+
+    collision_monitor = wf.CollisionMonitorSpec()
+    collision_monitor.name = "collision-band"
+    collision_monitor.component = 0
+    collision_monitor.geometry_region = "collision-band"
+    collision_monitor.shell_thickness = 0.04
+    collision_monitor.threshold = 1.0e-7
+    problem.monitors.collisions = [collision_monitor]
+
+    solver = wf.Solver(problem, make_config(wf.SolverMode.LinearApprox))
+    solver.run(36)
+
+    overlay: Overlay2D = [[0 for _ in range(nx)] for _ in range(ny)]
+    x_lo = int(0.48 * (nx - 1))
+    x_hi = int(0.52 * (nx - 1))
+    for y in range(ny):
+        for x in range(max(0, x_lo - 1), min(nx, x_hi + 2)):
+            overlay[y][x] = 1
+
+    frames_data: List[List[Field2D]] = []
+    peak_collision = 0.0
+    peak_self = 0.0
+    with tempfile.TemporaryDirectory(prefix="wavefront_collision_gif_") as tmp:
+        tmp_path = Path(tmp)
+        for frame_idx in range(frames):
+            solver.run(steps_per_frame)
+            field_panel = demean_field(sample_field(solver, nx, ny))
+            csv_path = tmp_path / f"collision_{frame_idx:04d}.csv"
+            solver.export_field_csv(str(csv_path))
+            collision_panel = log_positive_field(load_csv_scalar_panel(csv_path, nx, ny, "collision_activity"))
+            self_panel = log_positive_field(load_csv_scalar_panel(csv_path, nx, ny, "self_activity"))
+            peak_collision = max(peak_collision, max((max(row) for row in collision_panel), default=0.0))
+            peak_self = max(peak_self, max((max(row) for row in self_panel), default=0.0))
+            frames_data.append([field_panel, collision_panel, self_panel])
+
+    collision = solver.collision_surface("collision-band")
+    if collision.integrated_collision <= 0.0:
+        raise RuntimeError("Collision demo invalid: collision monitor stayed at zero.")
+    if peak_collision < 1.0e-5:
+        raise RuntimeError(f"Collision demo invalid: exported collision activity stayed trivial ({peak_collision:.3e}).")
+    if peak_self < peak_collision:
+        raise RuntimeError(
+            f"Collision demo invalid: self activity unexpectedly weaker than collision activity "
+            f"({peak_self:.3e} vs {peak_collision:.3e})."
+        )
+    if len(collision.wave_pairs) != 1 or len(collision.class_pairs) != 1:
+        raise RuntimeError("Collision demo invalid: expected one wave pair and one class pair for the head-on setup.")
+
+    VALIDATION_SUMMARY["collision_wavefronts"] = {
+        "integrated_collision": collision.integrated_collision,
+        "peak_collision_monitor": collision.peak_collision,
+        "peak_collision_activity_frame": peak_collision,
+        "peak_self_activity_frame": peak_self,
+        "wave_pair_count": len(collision.wave_pairs),
+        "class_pair_count": len(collision.class_pairs),
+    }
+
+    return generate_gif(
+        "wavefield-collision-wavefronts.gif",
+        frame_panels=frames_data,
+        fps=12,
+        layout=Layout(cell=5),
+        stripe_colors=[(89, 104, 173), (170, 78, 38), (83, 138, 96)],
+        overlays=[overlay, overlay, overlay],
+        panel_titles=["FIELD", "COLLISION", "SELF"],
+        panel_scale_mode="panel",
+    )
+
+
 def require_ffmpeg() -> None:
     if shutil.which("ffmpeg") is None:
         raise RuntimeError("ffmpeg is required to build GIFs; please install it and retry.")
@@ -1839,6 +1963,7 @@ def main() -> None:
         scenario_boundary_comparison(),
         scenario_double_slit(),
         scenario_longitudinal_wave(),
+        scenario_collision_wavefronts(),
         scenario_monitor_analysis(),
         scenario_3d_volume(),
         scenario_4d_hyperslice(),

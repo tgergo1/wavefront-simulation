@@ -71,7 +71,15 @@ The 3 × 3 grid visualises this directly:
 
 ![4D hyperslice grid](docs/assets/wavefield-4d-hyperslice.gif)
 
-### 9) Monitor / Spectrum / Far-Field Analysis
+### 9) Collision Wavefront Visualisation
+
+Head-on sources collide inside the highlighted centre strip. Left: aggregate field.
+Middle: per-cell `collision_activity` exported by `export_field_csv()`. Right: per-cell
+`self_activity`, showing same-wave energy separately from cross-wave collisions.
+
+![Collision wavefront visualisation](docs/assets/wavefield-collision-wavefronts.gif)
+
+### 10) Monitor / Spectrum / Far-Field Analysis
 
 Left: full-field magnitude snapshot from `field_snapshot()`. Middle: probe spectrum from
 `probe_spectrum()`. Right: near-to-far angular response from `far_field_pattern()`, with
