@@ -292,9 +292,17 @@ def sample_field(solver: "wf.Solver", nx: int, ny: int) -> Field2D:
 
 
 def load_csv_scalar_panel(path: Path, nx: int, ny: int, column: str, *, component: int = 0) -> Field2D:
+    """Load one scalar CSV export column into a 2-D panel.
+
+    The CSV is expected to come from `solver.export_field_csv()` and include at least
+    `flat`, `component`, and the requested data `column`. Flat indices are mapped back
+    to `(x, y)` with row-major ordering: `x = flat % nx`, `y = flat // nx`.
+    """
     panel: Field2D = [[0.0 for _ in range(nx)] for _ in range(ny)]
     with path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
+        if reader.fieldnames is None or column not in reader.fieldnames:
+            raise RuntimeError(f"CSV export {path} is missing required column '{column}'.")
         for row in reader:
             if int(row["component"]) != component:
                 continue
@@ -1884,14 +1892,14 @@ def scenario_collision_wavefronts() -> Path:
     )
     problem.sources = [left_source, right_source]
 
-    centre_layer = wf.GeometryRegion()
-    centre_layer.name = "collision-band"
-    centre_layer.shape = wf.GeometryShape.Layer
-    centre_layer.axis = 0
-    centre_layer.lower = 0.48
-    centre_layer.upper = 0.52
-    centre_layer.medium = problem.medium
-    problem.geometry = [centre_layer]
+    center_layer = wf.GeometryRegion()
+    center_layer.name = "collision-band"
+    center_layer.shape = wf.GeometryShape.Layer
+    center_layer.axis = 0
+    center_layer.lower = 0.48
+    center_layer.upper = 0.52
+    center_layer.medium = problem.medium
+    problem.geometry = [center_layer]
 
     collision_monitor = wf.CollisionMonitorSpec()
     collision_monitor.name = "collision-band"
@@ -1941,7 +1949,10 @@ def scenario_collision_wavefronts() -> Path:
             f"({peak_self:.3e} vs {peak_collision:.3e})."
         )
     if len(collision.wave_pairs) != 1 or len(collision.class_pairs) != 1:
-        raise RuntimeError("Collision demo invalid: expected one wave pair and one class pair for the head-on setup.")
+        raise RuntimeError(
+            "Collision demo invalid: expected one wave pair and one class pair for the head-on setup, "
+            f"but found {len(collision.wave_pairs)} wave pairs and {len(collision.class_pairs)} class pairs."
+        )
 
     VALIDATION_SUMMARY["collision_wavefronts"] = {
         "integrated_collision": collision.integrated_collision,
