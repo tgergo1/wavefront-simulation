@@ -98,6 +98,13 @@ struct GeometryRegion {
   double fractal_scale = 1.0;
 };
 
+struct WaveSourceSpec {
+  std::string name;
+  std::string wave_id;
+  std::string wave_class;
+  SymbolicExpr term{"0.0"};
+};
+
 struct ProbeMonitorSpec {
   std::string name;
   std::vector<std::size_t> index;
@@ -114,9 +121,20 @@ struct SurfaceMonitorSpec {
   double shell_thickness = 0.0;
 };
 
+struct CollisionMonitorSpec {
+  std::string name;
+  std::size_t axis = 0;
+  bool upper_face = false;
+  std::size_t component = 0;
+  std::string geometry_region;
+  double shell_thickness = 0.0;
+  double threshold = 0.0;
+};
+
 struct MonitorSpec {
   std::vector<ProbeMonitorSpec> probes;
   std::vector<SurfaceMonitorSpec> surfaces;
+  std::vector<CollisionMonitorSpec> collisions;
   std::size_t snapshot_interval = 0;
   std::size_t spectrum_bins = 0;
   bool enable_far_field = false;
@@ -136,6 +154,7 @@ struct ProblemSpec {
   std::vector<BoundarySpec> boundaries;
   MonitorSpec monitors;
   SymbolicExpr source_term{"0.0"};
+  std::vector<WaveSourceSpec> sources;
   std::size_t field_components = 1;
   WaveType wave_type = WaveType::Transverse;
 };
@@ -201,6 +220,26 @@ struct SurfaceFluxResult {
   double phase_proxy = 0.0;
 };
 
+struct CollisionPairResult {
+  std::string left_label;
+  std::string right_label;
+  std::size_t samples = 0;
+  double integrated_collision = 0.0;
+  double peak_collision = 0.0;
+};
+
+struct CollisionSurfaceResult {
+  std::string name;
+  std::size_t samples = 0;
+  double integrated_collision = 0.0;
+  double peak_collision = 0.0;
+  double self_activity = 0.0;
+  double reflected_collision = 0.0;
+  double transmitted_collision = 0.0;
+  std::vector<CollisionPairResult> wave_pairs;
+  std::vector<CollisionPairResult> class_pairs;
+};
+
 struct FarFieldPattern {
   std::size_t step = 0;
   double time = 0.0;
@@ -221,6 +260,7 @@ class ISolver {
   virtual std::vector<ProbeSample> probe_history(std::string_view name = {}) const = 0;
   virtual std::vector<SpectrumSample> probe_spectrum(std::string_view name, std::size_t bins = 0) const = 0;
   virtual SurfaceFluxResult surface_flux(std::string_view name) const = 0;
+  virtual CollisionSurfaceResult collision_surface(std::string_view name) const = 0;
   virtual FarFieldPattern far_field_pattern(std::size_t samples = 0) const = 0;
   virtual void save_checkpoint(std::string_view path) const = 0;
   virtual void load_checkpoint(std::string_view path) = 0;

@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <iomanip>
+#include <limits>
 #include <mutex>
 #include <sstream>
 #include <span>
@@ -189,6 +191,12 @@ ExpressionRequirements merge_requirements(ExpressionRequirements lhs, const Expr
   return lhs;
 }
 
+struct CompiledWaveSource {
+  WaveSourceSpec spec;
+  CompiledExpression expression;
+  ExpressionRequirements requirements;
+};
+
 double parse_boundary_parameter_scalar(const SymbolicExpr& expression, double fallback) {
   try {
     std::size_t pos = 0;
@@ -340,7 +348,19 @@ class RuntimeSolver final : public ISolver {
     stiffness_expr_ = compile_or_default(problem_.medium.stiffness, "1.0");
     damping_expr_ = compile_or_default(problem_.medium.damping, "0.0");
     dispersion_expr_ = compile_or_default(problem_.medium.dispersion, "0.0");
-    source_expr_ = compile_or_default(problem_.source_term, "0.0");
+    compile_wave_sources();
+    previous_wave_fields_.assign(compiled_sources_.size(), FieldBuffer<double>(grid_, problem_.field_components));
+    current_wave_fields_.assign(compiled_sources_.size(), FieldBuffer<double>(grid_, problem_.field_components));
+    next_wave_fields_.assign(compiled_sources_.size(), FieldBuffer<double>(grid_, problem_.field_components));
+    for (auto& field : previous_wave_fields_) {
+      field.fill(0.0);
+    }
+    for (auto& field : current_wave_fields_) {
+      field.fill(0.0);
+    }
+    for (auto& field : next_wave_fields_) {
+      field.fill(0.0);
+    }
     analyze_expression_usage();
     prepare_spatial_metadata();
     build_static_coefficient_cache();
@@ -395,6 +415,20 @@ class RuntimeSolver final : public ISolver {
           }
         });
 
+    for (std::size_t wave_index = 0; wave_index < compiled_sources_.size(); ++wave_index) {
+      deterministic_parallel_for(
+          points,
+          active_thread_count(),
+          config_.deterministic,
+          [&](std::size_t begin, std::size_t end) {
+            for (std::size_t flat = begin; flat < end; ++flat) {
+              for (std::size_t component = 0; component < components; ++component) {
+                update_wave_cell(wave_index, flat, component);
+              }
+            }
+          });
+    }
+
     for (std::size_t component = 0; component < components; ++component) {
       const BoundaryMetrics metrics = apply_boundary_conditions(
           grid_,
@@ -413,8 +447,30 @@ class RuntimeSolver final : public ISolver {
       total_absorbed_energy_ += metrics.absorbed_energy;
     }
 
+    for (std::size_t wave_index = 0; wave_index < compiled_sources_.size(); ++wave_index) {
+      for (std::size_t component = 0; component < components; ++component) {
+        apply_boundary_conditions(
+            grid_,
+            problem_.boundaries,
+            wave_pml_memories_[wave_index],
+            next_wave_fields_[wave_index],
+            current_wave_fields_[wave_index],
+            previous_wave_fields_[wave_index],
+            component,
+            config_.split_pml,
+            dt_,
+            8.0 / (grid_.min_spacing() * static_cast<double>(grid_.dims())),
+            active_thread_count(),
+            config_.deterministic);
+      }
+    }
+
     previous_.data().swap(current_.data());
     current_.data().swap(next_.data());
+    for (std::size_t wave_index = 0; wave_index < compiled_sources_.size(); ++wave_index) {
+      previous_wave_fields_[wave_index].data().swap(current_wave_fields_[wave_index].data());
+      current_wave_fields_[wave_index].data().swap(next_wave_fields_[wave_index].data());
+    }
 
     ++step_count_;
     last_energy_ = compute_energy();
@@ -465,6 +521,8 @@ class RuntimeSolver final : public ISolver {
     out << ",\"absorbed_energy\":" << total_absorbed_energy_;
     out << ",\"probe_samples\":" << probe_samples_.size();
     out << ",\"surface_monitors\":" << surface_flux_results_.size();
+    out << ",\"wave_sources\":" << compiled_sources_.size();
+    out << ",\"collision_monitors\":" << collision_surface_results_.size();
     out << ",\"geometry_regions\":" << geometry_regions_.size();
     out << "}";
     return out.str();
@@ -541,6 +599,15 @@ class RuntimeSolver final : public ISolver {
     throw std::out_of_range("surface monitor not found");
   }
 
+  CollisionSurfaceResult collision_surface(std::string_view name) const override {
+    for (const auto& collision : collision_surface_results_) {
+      if (collision.name == name) {
+        return collision;
+      }
+    }
+    throw std::out_of_range("collision monitor not found");
+  }
+
   FarFieldPattern far_field_pattern(std::size_t samples = 0) const override {
     const std::size_t sample_count = samples > 0 ? samples : config_.far_field_samples;
     if (sample_count == 0) {
@@ -578,7 +645,29 @@ class RuntimeSolver final : public ISolver {
       throw std::runtime_error("failed to open checkpoint for writing");
     }
 
-    out << "WAVEFRONT_CHECKPOINT_V1\n";
+    if (!has_extended_checkpoint_data()) {
+      out << "WAVEFRONT_CHECKPOINT_V1\n";
+      out << "step " << step_count_ << "\n";
+      out << "dt " << dt_ << "\n";
+      out << "dims " << grid_.dims() << "\n";
+      out << "components " << problem_.field_components << "\n";
+      out << "shape";
+      for (const auto value : grid_.shape()) {
+        out << ' ' << value;
+      }
+      out << "\ncurrent";
+      for (const auto value : current_.data()) {
+        out << ' ' << value;
+      }
+      out << "\nprevious";
+      for (const auto value : previous_.data()) {
+        out << ' ' << value;
+      }
+      out << "\n";
+      return;
+    }
+
+    out << "WAVEFRONT_CHECKPOINT_V2\n";
     out << "step " << step_count_ << "\n";
     out << "dt " << dt_ << "\n";
     out << "dims " << grid_.dims() << "\n";
@@ -595,7 +684,42 @@ class RuntimeSolver final : public ISolver {
     for (const auto value : previous_.data()) {
       out << ' ' << value;
     }
-    out << "\n";
+    out << "\nwaves " << compiled_sources_.size() << "\n";
+    for (std::size_t i = 0; i < compiled_sources_.size(); ++i) {
+      const auto& source = compiled_sources_[i].spec;
+      out << "wave_meta " << i << ' ' << std::quoted(source.name) << ' ' << std::quoted(source.wave_id) << ' '
+          << std::quoted(source.wave_class) << ' ' << std::quoted(source.term.text) << "\n";
+      out << "wave_current " << i;
+      for (const auto value : current_wave_fields_[i].data()) {
+        out << ' ' << value;
+      }
+      out << "\nwave_previous " << i;
+      for (const auto value : previous_wave_fields_[i].data()) {
+        out << ' ' << value;
+      }
+      out << "\n";
+    }
+    out << "surface_results " << surface_flux_results_.size() << "\n";
+    for (const auto& result : surface_flux_results_) {
+      out << "surface_result " << std::quoted(result.name) << ' ' << result.samples << ' ' << result.integrated_flux << ' '
+          << result.reflected_proxy << ' ' << result.transmitted_proxy << ' ' << result.peak_flux << ' ' << result.phase_proxy
+          << "\n";
+    }
+    out << "collision_results " << collision_surface_results_.size() << "\n";
+    for (const auto& result : collision_surface_results_) {
+      out << "collision_result " << std::quoted(result.name) << ' ' << result.samples << ' ' << result.integrated_collision << ' '
+          << result.peak_collision << ' ' << result.self_activity << ' ' << result.reflected_collision << ' '
+          << result.transmitted_collision << ' ' << result.wave_pairs.size() << ' ' << result.class_pairs.size() << "\n";
+      for (const auto& pair : result.wave_pairs) {
+        out << "collision_wave_pair " << std::quoted(pair.left_label) << ' ' << std::quoted(pair.right_label) << ' '
+            << pair.samples << ' ' << pair.integrated_collision << ' ' << pair.peak_collision << "\n";
+      }
+      for (const auto& pair : result.class_pairs) {
+        out << "collision_class_pair " << std::quoted(pair.left_label) << ' ' << std::quoted(pair.right_label) << ' '
+            << pair.samples << ' ' << pair.integrated_collision << ' ' << pair.peak_collision << "\n";
+      }
+      out << "collision_result_end\n";
+    }
   }
 
   void load_checkpoint(std::string_view path) override {
@@ -606,13 +730,17 @@ class RuntimeSolver final : public ISolver {
 
     std::string header;
     in >> header;
-    if (header != "WAVEFRONT_CHECKPOINT_V1") {
+    if (header != "WAVEFRONT_CHECKPOINT_V1" && header != "WAVEFRONT_CHECKPOINT_V2") {
       throw std::invalid_argument("unsupported checkpoint format");
     }
 
     std::string token;
     std::vector<double> current_values;
     std::vector<double> previous_values;
+    std::vector<std::vector<double>> wave_current_values(compiled_sources_.size());
+    std::vector<std::vector<double>> wave_previous_values(compiled_sources_.size());
+    std::vector<SurfaceFluxResult> loaded_surface_results;
+    std::vector<CollisionSurfaceResult> loaded_collision_results;
     while (in >> token) {
       if (token == "step") {
         in >> step_count_;
@@ -648,6 +776,80 @@ class RuntimeSolver final : public ISolver {
         for (auto& value : previous_values) {
           in >> value;
         }
+      } else if (token == "waves") {
+        std::size_t wave_count = 0;
+        in >> wave_count;
+        if (wave_count != compiled_sources_.size()) {
+          throw std::invalid_argument("checkpoint wave count mismatch");
+        }
+      } else if (token == "wave_meta") {
+        std::size_t wave_index = 0;
+        std::string name;
+        std::string wave_id;
+        std::string wave_class;
+        std::string term;
+        in >> wave_index >> std::quoted(name) >> std::quoted(wave_id) >> std::quoted(wave_class) >> std::quoted(term);
+        if (wave_index >= compiled_sources_.size()) {
+          throw std::invalid_argument("checkpoint wave index mismatch");
+        }
+      } else if (token == "wave_current") {
+        std::size_t wave_index = 0;
+        in >> wave_index;
+        if (wave_index >= compiled_sources_.size()) {
+          throw std::invalid_argument("checkpoint wave index mismatch");
+        }
+        wave_current_values[wave_index].resize(current_.data().size(), 0.0);
+        for (auto& value : wave_current_values[wave_index]) {
+          in >> value;
+        }
+      } else if (token == "wave_previous") {
+        std::size_t wave_index = 0;
+        in >> wave_index;
+        if (wave_index >= compiled_sources_.size()) {
+          throw std::invalid_argument("checkpoint wave index mismatch");
+        }
+        wave_previous_values[wave_index].resize(previous_.data().size(), 0.0);
+        for (auto& value : wave_previous_values[wave_index]) {
+          in >> value;
+        }
+      } else if (token == "surface_results") {
+        std::size_t count = 0;
+        in >> count;
+        loaded_surface_results.reserve(count);
+      } else if (token == "surface_result") {
+        SurfaceFluxResult result;
+        in >> std::quoted(result.name) >> result.samples >> result.integrated_flux >> result.reflected_proxy >>
+            result.transmitted_proxy >> result.peak_flux >> result.phase_proxy;
+        loaded_surface_results.push_back(std::move(result));
+      } else if (token == "collision_results") {
+        std::size_t count = 0;
+        in >> count;
+        loaded_collision_results.reserve(count);
+      } else if (token == "collision_result") {
+        CollisionSurfaceResult result;
+        std::size_t wave_pair_count = 0;
+        std::size_t class_pair_count = 0;
+        in >> std::quoted(result.name) >> result.samples >> result.integrated_collision >> result.peak_collision >>
+            result.self_activity >> result.reflected_collision >> result.transmitted_collision >> wave_pair_count >>
+            class_pair_count;
+        result.wave_pairs.reserve(wave_pair_count);
+        result.class_pairs.reserve(class_pair_count);
+        while (in >> token) {
+          if (token == "collision_result_end") {
+            break;
+          }
+          CollisionPairResult pair;
+          in >> std::quoted(pair.left_label) >> std::quoted(pair.right_label) >> pair.samples >> pair.integrated_collision >>
+              pair.peak_collision;
+          if (token == "collision_wave_pair") {
+            result.wave_pairs.push_back(std::move(pair));
+          } else if (token == "collision_class_pair") {
+            result.class_pairs.push_back(std::move(pair));
+          } else {
+            throw std::invalid_argument("unsupported collision pair format");
+          }
+        }
+        loaded_collision_results.push_back(std::move(result));
       }
     }
 
@@ -658,9 +860,31 @@ class RuntimeSolver final : public ISolver {
     current_.data() = std::move(current_values);
     previous_.data() = std::move(previous_values);
     next_.fill(0.0);
+    pml_memory_.clear();
+    for (std::size_t wave_index = 0; wave_index < compiled_sources_.size(); ++wave_index) {
+      if (header == "WAVEFRONT_CHECKPOINT_V2") {
+        if (wave_current_values[wave_index].size() != current_.data().size() ||
+            wave_previous_values[wave_index].size() != previous_.data().size()) {
+          throw std::invalid_argument("checkpoint wave state is incomplete");
+        }
+        current_wave_fields_[wave_index].data() = std::move(wave_current_values[wave_index]);
+        previous_wave_fields_[wave_index].data() = std::move(wave_previous_values[wave_index]);
+      } else {
+        current_wave_fields_[wave_index].fill(0.0);
+        previous_wave_fields_[wave_index].fill(0.0);
+      }
+      next_wave_fields_[wave_index].fill(0.0);
+      wave_pml_memories_[wave_index].clear();
+    }
     last_energy_ = compute_energy();
-    reset_monitor_state();
-    record_monitors();
+    if (header == "WAVEFRONT_CHECKPOINT_V2") {
+      probe_samples_.clear();
+      surface_flux_results_ = std::move(loaded_surface_results);
+      collision_surface_results_ = std::move(loaded_collision_results);
+    } else {
+      reset_monitor_state();
+      record_monitors();
+    }
   }
 
   void export_field_csv(std::string_view path) const override {
@@ -669,12 +893,81 @@ class RuntimeSolver final : public ISolver {
       throw std::runtime_error("failed to open csv export");
     }
 
-    out << "flat,component,value,real,imaginary\n";
+    const bool include_collision_columns = compiled_sources_.size() >= 2;
+    if (include_collision_columns) {
+      out << "flat,component,value,real,imaginary,collision_activity,self_activity,dominant_wave_pair,dominant_class_pair\n";
+    } else {
+      out << "flat,component,value,real,imaginary\n";
+    }
     for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
       for (std::size_t component = 0; component < problem_.field_components; ++component) {
         const double value = current_.at_flat(flat, component);
         const ComplexValue complex_value = complex_at_flat(flat, component);
-        out << flat << ',' << component << ',' << value << ',' << complex_value.real << ',' << complex_value.imag << "\n";
+        out << flat << ',' << component << ',' << value << ',' << complex_value.real << ',' << complex_value.imag;
+        if (include_collision_columns) {
+          double self_activity = 0.0;
+          double collision_activity = 0.0;
+          double dominant_wave_value = -1.0;
+          double dominant_class_value = -1.0;
+          std::string dominant_wave_pair;
+          std::string dominant_class_pair;
+          const double threshold = default_collision_threshold();
+          std::vector<double> class_activity(source_classes_.size(), 0.0);
+          for (std::size_t wave_index = 0; wave_index < compiled_sources_.size(); ++wave_index) {
+            const double wave_value = current_wave_fields_[wave_index].at_flat(flat, component);
+            const double velocity =
+                (current_wave_fields_[wave_index].at_flat(flat, component) -
+                 previous_wave_fields_[wave_index].at_flat(flat, component)) /
+                positive_or_floor(dt_, 1.0e-12);
+            const double activity = std::fabs(wave_value * velocity);
+            self_activity += activity;
+            if (activity >= threshold) {
+              const std::size_t class_index = source_class_index(compiled_sources_[wave_index].spec.wave_class);
+              if (class_index < class_activity.size()) {
+                class_activity[class_index] += activity;
+              }
+            }
+          }
+          for (std::size_t i = 0; i < compiled_sources_.size(); ++i) {
+            const double left_value = current_wave_fields_[i].at_flat(flat, component);
+            const double left_velocity =
+                (current_wave_fields_[i].at_flat(flat, component) - previous_wave_fields_[i].at_flat(flat, component)) /
+                positive_or_floor(dt_, 1.0e-12);
+            const double left_activity = std::fabs(left_value * left_velocity);
+            if (left_activity < threshold) {
+              continue;
+            }
+            for (std::size_t j = i + 1; j < compiled_sources_.size(); ++j) {
+              const double right_value = current_wave_fields_[j].at_flat(flat, component);
+              const double right_velocity =
+                  (current_wave_fields_[j].at_flat(flat, component) -
+                   previous_wave_fields_[j].at_flat(flat, component)) /
+                  positive_or_floor(dt_, 1.0e-12);
+              const double right_activity = std::fabs(right_value * right_velocity);
+              if (right_activity < threshold) {
+                continue;
+              }
+              const double pair_collision = std::sqrt(left_activity * right_activity);
+              collision_activity += pair_collision;
+              if (pair_collision > dominant_wave_value) {
+                dominant_wave_value = pair_collision;
+                dominant_wave_pair = compiled_sources_[i].spec.wave_id + "|" + compiled_sources_[j].spec.wave_id;
+              }
+            }
+          }
+          for (std::size_t i = 0; i < class_activity.size(); ++i) {
+            for (std::size_t j = i + 1; j < class_activity.size(); ++j) {
+              const double pair_collision = std::sqrt(class_activity[i] * class_activity[j]);
+              if (pair_collision > dominant_class_value) {
+                dominant_class_value = pair_collision;
+                dominant_class_pair = source_classes_[i] + "|" + source_classes_[j];
+              }
+            }
+          }
+          out << ',' << collision_activity << ',' << self_activity << ',' << std::quoted(dominant_wave_pair) << ','
+              << std::quoted(dominant_class_pair);
+        }
+        out << "\n";
       }
     }
   }
@@ -755,8 +1048,57 @@ class RuntimeSolver final : public ISolver {
     }
   }
 
+  void compile_wave_sources() {
+    compiled_sources_.clear();
+    source_classes_.clear();
+
+    if (problem_.sources.empty()) {
+      WaveSourceSpec source;
+      source.name = "default";
+      source.wave_id = "default";
+      source.wave_class = "default";
+      source.term = problem_.source_term;
+      compiled_sources_.push_back(CompiledWaveSource{
+          source,
+          compile_or_default(source.term, "0.0"),
+          {},
+      });
+    } else {
+      compiled_sources_.reserve(problem_.sources.size());
+      for (std::size_t i = 0; i < problem_.sources.size(); ++i) {
+        WaveSourceSpec source = problem_.sources[i];
+        if (source.name.empty()) {
+          source.name = "source-" + std::to_string(i);
+        }
+        if (source.wave_id.empty()) {
+          source.wave_id = source.name;
+        }
+        if (source.wave_class.empty()) {
+          source.wave_class = source.wave_id;
+        }
+        compiled_sources_.push_back(CompiledWaveSource{
+            source,
+            compile_or_default(source.term, "0.0"),
+            {},
+        });
+      }
+    }
+
+    for (const auto& source : compiled_sources_) {
+      if (std::find(source_classes_.begin(), source_classes_.end(), source.spec.wave_class) == source_classes_.end()) {
+        source_classes_.push_back(source.spec.wave_class);
+      }
+    }
+
+    wave_pml_memories_.assign(compiled_sources_.size(), {});
+  }
+
   void analyze_expression_usage() {
-    source_requirements_ = analyze_expression_requirements(source_expr_);
+    source_requirements_ = {};
+    for (auto& source : compiled_sources_) {
+      source.requirements = analyze_expression_requirements(source.expression);
+      source_requirements_ = merge_requirements(source_requirements_, source.requirements);
+    }
     dynamic_coefficient_requirements_ = {};
 
     density_static_ = analyze_expression_requirements(density_expr_).spatial_only();
@@ -843,12 +1185,43 @@ class RuntimeSolver final : public ISolver {
     for (const auto& surface : problem_.monitors.surfaces) {
       surface_flux_results_.push_back(SurfaceFluxResult{surface.name, 0, 0.0, 0.0, 0.0, 0.0, 0.0});
     }
+    collision_surface_results_.clear();
+    collision_surface_results_.reserve(problem_.monitors.collisions.size());
+    for (const auto& collision : problem_.monitors.collisions) {
+      CollisionSurfaceResult result;
+      result.name = collision.name;
+      for (std::size_t i = 0; i < compiled_sources_.size(); ++i) {
+        for (std::size_t j = i + 1; j < compiled_sources_.size(); ++j) {
+          result.wave_pairs.push_back(CollisionPairResult{
+              compiled_sources_[i].spec.wave_id,
+              compiled_sources_[j].spec.wave_id,
+              0,
+              0.0,
+              0.0,
+          });
+        }
+      }
+      for (std::size_t i = 0; i < source_classes_.size(); ++i) {
+        for (std::size_t j = i + 1; j < source_classes_.size(); ++j) {
+          result.class_pairs.push_back(CollisionPairResult{source_classes_[i], source_classes_[j], 0, 0.0, 0.0});
+        }
+      }
+      collision_surface_results_.push_back(std::move(result));
+    }
   }
 
   struct SurfaceFluxSample {
     double flux = 0.0;
     double peak = 0.0;
     double phase = 0.0;
+  };
+
+  struct CollisionSurfaceSample {
+    double collision = 0.0;
+    double peak = 0.0;
+    double self_activity = 0.0;
+    std::vector<double> wave_pairs;
+    std::vector<double> class_pairs;
   };
 
   int geometry_region_index_by_name(std::string_view name) const {
@@ -883,6 +1256,32 @@ class RuntimeSolver final : public ISolver {
       }
     }
     return false;
+  }
+
+  bool monitor_includes_flat(
+      std::size_t flat,
+      std::size_t axis,
+      bool upper_face,
+      std::string_view geometry_region,
+      double shell_thickness) const {
+    if (!geometry_region.empty()) {
+      const int target_region = geometry_region_index_by_name(geometry_region);
+      if (target_region < 0) {
+        return false;
+      }
+      const std::size_t shell_cells = compute_shell_cells_from_thickness(shell_thickness, grid_.min_spacing());
+      return is_geometry_surface_cell(flat, target_region, shell_cells);
+    }
+
+    const std::vector<std::size_t> index = grid_.unravel_index(flat);
+    const std::size_t face_index = upper_face ? (grid_.shape()[axis] - 1) : 0;
+    return index[axis] == face_index;
+  }
+
+  std::size_t source_class_index(std::string_view source_class) const {
+    const auto it = std::find(source_classes_.begin(), source_classes_.end(), source_class);
+    return it == source_classes_.end() ? source_classes_.size()
+                                       : static_cast<std::size_t>(std::distance(source_classes_.begin(), it));
   }
 
   const FaceBoundary& face_boundary(std::size_t axis, bool upper) const {
@@ -1123,6 +1522,7 @@ class RuntimeSolver final : public ISolver {
       std::size_t flat,
       std::size_t component,
       long double t,
+      const FieldBuffer<double>& field,
       const ExpressionRequirements& requirements) const {
     EvaluationContext context;
     if (requirements.needs_position) {
@@ -1134,14 +1534,14 @@ class RuntimeSolver final : public ISolver {
     if (requirements.needs_field || requirements.needs_derivatives) {
       context.u.resize(problem_.field_components, 0.0L);
       for (std::size_t comp = 0; comp < problem_.field_components; ++comp) {
-        context.u[comp] = current_.at_flat(flat, comp);
+        context.u[comp] = field.at_flat(flat, comp);
       }
     }
     if (requirements.needs_derivatives) {
       context.derivatives.reserve(problem_.field_components * grid_.dims());
       for (std::size_t comp = 0; comp < problem_.field_components; ++comp) {
         for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
-          const double derivative = directional_gradient(current_, flat, comp, axis);
+          const double derivative = directional_gradient(field, flat, comp, axis);
           context.derivatives.emplace("du" + std::to_string(comp) + "_dx" + std::to_string(axis), derivative);
         }
       }
@@ -1153,12 +1553,37 @@ class RuntimeSolver final : public ISolver {
     return context;
   }
 
+  EvaluationContext build_context(
+      std::size_t flat,
+      std::size_t component,
+      long double t,
+      const ExpressionRequirements& requirements) const {
+    return build_context(flat, component, t, current_, requirements);
+  }
+
   double evaluate_source(std::size_t flat, std::size_t component, long double t) const {
-    if (source_expr_.bytecode().empty()) {
+    double source_sum = 0.0;
+    for (const auto& source : compiled_sources_) {
+      if (source.expression.bytecode().empty()) {
+        continue;
+      }
+      const EvaluationContext context = build_context(flat, component, t, current_, source.requirements);
+      source_sum += source.expression.evaluate_double(context);
+    }
+    return source_sum;
+  }
+
+  double evaluate_wave_source(std::size_t wave_index, std::size_t flat, std::size_t component, long double t) const {
+    if (wave_index >= compiled_sources_.size()) {
       return 0.0;
     }
-    const EvaluationContext context = build_context(flat, component, t, source_requirements_);
-    return source_expr_.evaluate_double(context);
+    const auto& source = compiled_sources_[wave_index];
+    if (source.expression.bytecode().empty()) {
+      return 0.0;
+    }
+    const EvaluationContext context =
+        build_context(flat, component, t, current_wave_fields_[wave_index], source.requirements);
+    return source.expression.evaluate_double(context);
   }
 
   bool all_coefficients_cached() const {
@@ -1268,6 +1693,65 @@ class RuntimeSolver final : public ISolver {
     }  // GCOVR_EXCL_STOP
   }
 
+  void update_wave_cell(std::size_t wave_index, std::size_t flat, std::size_t component) {
+    const auto& wave_current = current_wave_fields_[wave_index];
+    const auto& wave_previous = previous_wave_fields_[wave_index];
+    const double current = wave_current.at_flat(flat, component);
+    const double previous = wave_previous.at_flat(flat, component);
+    const long double time = static_cast<long double>(step_count_) * dt_;
+    double density = 0.0;
+    double stiffness = 0.0;
+    double damping = 0.0;
+    double dispersion = 0.0;
+    populate_dynamic_coefficients(flat, component, time, density, stiffness, damping, dispersion);
+
+    density = positive_or_floor(density, 1.0e-12);
+    stiffness = positive_or_floor(stiffness, 1.0e-12);
+    damping = std::max(0.0, damping);
+    const double source = evaluate_wave_source(wave_index, flat, component, time);
+
+    const double c2 = stiffness / density;
+    const double velocity = (current - previous) / dt_;
+    const double dt2 = dt_ * dt_;
+
+    const bool use_grad_div = (problem_.wave_type == WaveType::Longitudinal &&
+                               problem_.field_components > 1 &&
+                               component < grid_.dims());
+    const double spatial_term = use_grad_div
+                                    ? grad_div_component_at(wave_current, flat, component)
+                                    : laplacian_at(wave_current, flat, component);
+
+    double rhs = c2 * spatial_term + source - damping * velocity;
+
+    if (config_.mode == SolverMode::NonlinearContinuum) {
+      rhs += dispersion * current * current * current;
+    } else if (config_.mode == SolverMode::MicroSurrogate) {
+      const double lap = laplacian_at(wave_current, flat, component);
+      const double grad0 = directional_gradient(wave_current, flat, component, 0);
+      const double grad1 = grid_.dims() > 1 ? directional_gradient(wave_current, flat, component, 1) : 0.0;
+      const double anisotropy = grad0 * grad0 - grad1 * grad1;
+      const double memory_kernel = -0.04 * std::tanh(velocity);
+      const double gradient_correction = 0.1 * dispersion * lap;
+      rhs += gradient_correction + memory_kernel + 0.05 * anisotropy;
+    }
+
+    double next = 0.0;
+    if (config_.family == SolverFamily::TimeDomain) {
+      next = 2.0 * current - previous + dt2 * rhs;
+    } else if (config_.family == SolverFamily::FrequencyDomain) {
+      const double omega = 2.0 * kPi * config_.center_frequency;
+      const double denom = positive_or_floor(omega * omega + damping + std::fabs(dispersion), 1.0e-9);
+      const double target = (c2 * spatial_term + source) / denom;
+      next = 0.85 * current + 0.15 * target;
+    } else {
+      const double omega = 2.0 * kPi * config_.center_frequency;
+      const double phase_drive = std::cos(omega * dt_);
+      next = current + dt_ * rhs - 0.15 * dt_ * velocity + 0.05 * phase_drive * current;
+    }
+
+    next_wave_fields_[wave_index].at_flat(flat, component) = next;
+  }
+
   ComplexValue complex_at_flat(std::size_t flat, std::size_t component) const {
     const double value = current_.at_flat(flat, component);
     const double velocity = (current_.at_flat(flat, component) - previous_.at_flat(flat, component)) / positive_or_floor(dt_, 1.0e-12);
@@ -1302,6 +1786,35 @@ class RuntimeSolver final : public ISolver {
         } else {
           result.reflected_proxy += sample.flux;
         }
+      }
+    }
+
+    for (std::size_t i = 0; i < problem_.monitors.collisions.size(); ++i) {
+      const CollisionSurfaceSample sample = compute_collision_surface(problem_.monitors.collisions[i]);
+      auto& result = collision_surface_results_[i];
+      ++result.samples;
+      result.integrated_collision += sample.collision;
+      result.peak_collision = std::max(result.peak_collision, sample.peak);
+      result.self_activity += sample.self_activity;
+      if (problem_.monitors.collisions[i].geometry_region.empty()) {
+        if (problem_.monitors.collisions[i].upper_face) {
+          result.transmitted_collision += sample.collision;
+        } else {
+          result.reflected_collision += sample.collision;
+        }
+      }
+      for (std::size_t pair_index = 0; pair_index < result.wave_pairs.size() && pair_index < sample.wave_pairs.size(); ++pair_index) {
+        auto& pair = result.wave_pairs[pair_index];
+        ++pair.samples;
+        pair.integrated_collision += sample.wave_pairs[pair_index];
+        pair.peak_collision = std::max(pair.peak_collision, sample.wave_pairs[pair_index]);
+      }
+      for (std::size_t pair_index = 0; pair_index < result.class_pairs.size() && pair_index < sample.class_pairs.size();
+           ++pair_index) {
+        auto& pair = result.class_pairs[pair_index];
+        ++pair.samples;
+        pair.integrated_collision += sample.class_pairs[pair_index];
+        pair.peak_collision = std::max(pair.peak_collision, sample.class_pairs[pair_index]);
       }
     }
   }
@@ -1362,6 +1875,62 @@ class RuntimeSolver final : public ISolver {
     return sample;
   }
 
+  CollisionSurfaceSample compute_collision_surface(const CollisionMonitorSpec& monitor) const {
+    CollisionSurfaceSample sample;
+    sample.wave_pairs.assign(compiled_sources_.size() > 1 ? (compiled_sources_.size() * (compiled_sources_.size() - 1)) / 2 : 0, 0.0);
+    sample.class_pairs.assign(source_classes_.size() > 1 ? (source_classes_.size() * (source_classes_.size() - 1)) / 2 : 0, 0.0);
+    if (compiled_sources_.empty() || grid_.dims() == 0) {
+      return sample;
+    }
+
+    std::vector<double> source_activity(compiled_sources_.size(), 0.0);
+    std::vector<double> class_activity(source_classes_.size(), 0.0);
+    for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
+      if (!monitor_includes_flat(flat, monitor.axis, monitor.upper_face, monitor.geometry_region, monitor.shell_thickness)) {
+        continue;
+      }
+
+      std::fill(source_activity.begin(), source_activity.end(), 0.0);
+      std::fill(class_activity.begin(), class_activity.end(), 0.0);
+      for (std::size_t wave_index = 0; wave_index < compiled_sources_.size(); ++wave_index) {
+        const double value = current_wave_fields_[wave_index].at_flat(flat, monitor.component);
+        const double velocity =
+            (current_wave_fields_[wave_index].at_flat(flat, monitor.component) -
+             previous_wave_fields_[wave_index].at_flat(flat, monitor.component)) /
+            positive_or_floor(dt_, 1.0e-12);
+        const double activity = std::fabs(value * velocity);
+        sample.self_activity += activity;
+        if (activity < monitor.threshold) {
+          continue;
+        }
+        source_activity[wave_index] = activity;
+        const std::size_t class_index = source_class_index(compiled_sources_[wave_index].spec.wave_class);
+        if (class_index < class_activity.size()) {
+          class_activity[class_index] += activity;
+        }
+      }
+
+      std::size_t pair_offset = 0;
+      for (std::size_t i = 0; i < source_activity.size(); ++i) {
+        for (std::size_t j = i + 1; j < source_activity.size(); ++j) {
+          const double pair_collision = std::sqrt(source_activity[i] * source_activity[j]);
+          sample.wave_pairs[pair_offset++] += pair_collision;
+          sample.collision += pair_collision;
+          sample.peak = std::max(sample.peak, pair_collision);
+        }
+      }
+
+      pair_offset = 0;
+      for (std::size_t i = 0; i < class_activity.size(); ++i) {
+        for (std::size_t j = i + 1; j < class_activity.size(); ++j) {
+          const double pair_collision = std::sqrt(class_activity[i] * class_activity[j]);
+          sample.class_pairs[pair_offset++] += pair_collision;
+        }
+      }
+    }
+    return sample;
+  }
+
   std::vector<double> extract_axis_line(std::size_t component) const {
     std::vector<std::size_t> index(grid_.dims(), 0);
     for (std::size_t axis = 1; axis < grid_.dims(); ++axis) {
@@ -1374,6 +1943,18 @@ class RuntimeSolver final : public ISolver {
       line[i] = current_.at_index(index, component);
     }
     return line;
+  }
+
+  bool has_extended_checkpoint_data() const {
+    return compiled_sources_.size() > 1 || !problem_.monitors.collisions.empty();
+  }
+
+  double default_collision_threshold() const {
+    double threshold = std::numeric_limits<double>::infinity();
+    for (const auto& monitor : problem_.monitors.collisions) {
+      threshold = std::min(threshold, monitor.threshold);
+    }
+    return std::isfinite(threshold) ? threshold : 0.0;
   }
 
   double compute_energy() const {
@@ -1405,7 +1986,11 @@ class RuntimeSolver final : public ISolver {
   FieldBuffer<double> previous_;
   FieldBuffer<double> current_;
   FieldBuffer<double> next_;
+  std::vector<FieldBuffer<double>> previous_wave_fields_;
+  std::vector<FieldBuffer<double>> current_wave_fields_;
+  std::vector<FieldBuffer<double>> next_wave_fields_;
   std::vector<double> pml_memory_;
+  std::vector<std::vector<double>> wave_pml_memories_;
   std::vector<FaceBoundary> lower_faces_;
   std::vector<FaceBoundary> upper_faces_;
 
@@ -1413,7 +1998,8 @@ class RuntimeSolver final : public ISolver {
   CompiledExpression stiffness_expr_;
   CompiledExpression damping_expr_;
   CompiledExpression dispersion_expr_;
-  CompiledExpression source_expr_;
+  std::vector<CompiledWaveSource> compiled_sources_;
+  std::vector<std::string> source_classes_;
   std::vector<CompiledGeometryRegion> geometry_regions_;
   std::vector<long double> coordinate_cache_;
   std::vector<int> region_index_cache_;
@@ -1431,6 +2017,7 @@ class RuntimeSolver final : public ISolver {
   ExecutionBackend active_backend_ = ExecutionBackend::ThreadedCPU;
   std::vector<ProbeSample> probe_samples_;
   std::vector<SurfaceFluxResult> surface_flux_results_;
+  std::vector<CollisionSurfaceResult> collision_surface_results_;
 
   std::size_t step_count_ = 0;
   double dt_ = 1.0e-3;

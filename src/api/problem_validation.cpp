@@ -42,6 +42,30 @@ std::vector<ValidationIssue> validate_problem(const ProblemSpec& problem, const 
     issues.push_back({"field_components must be positive", true});
   }
 
+  std::vector<std::string> wave_ids;
+  wave_ids.reserve(problem.sources.size());
+  for (const auto& source : problem.sources) {
+    if (source.term.text.empty()) {
+      issues.push_back({"wave sources must provide a source expression", true});
+      break;
+    }
+    const std::string effective_wave_id = source.wave_id.empty() ? source.name : source.wave_id;
+    if (effective_wave_id.empty()) {
+      issues.push_back({"wave sources must provide a non-empty wave_id or name", true});
+      break;
+    }
+    if (std::find(wave_ids.begin(), wave_ids.end(), effective_wave_id) != wave_ids.end()) {
+      issues.push_back({"wave source wave_id values must be unique", true});
+      break;
+    }
+    wave_ids.push_back(effective_wave_id);
+    const std::string effective_wave_class = source.wave_class.empty() ? effective_wave_id : source.wave_class;
+    if (effective_wave_class.empty()) {
+      issues.push_back({"wave sources must provide a non-empty wave_class, wave_id, or name", true});
+      break;
+    }
+  }
+
   for (const auto& boundary : problem.boundaries) {
     if (boundary.axis >= problem.grid.dims) {
       issues.push_back({"boundary.axis must be in [0, grid.dims)", true});
@@ -107,6 +131,32 @@ std::vector<ValidationIssue> validate_problem(const ProblemSpec& problem, const 
     }
     if (surface.shell_thickness < 0.0) {
       issues.push_back({"surface monitor shell_thickness must be non-negative", true});
+      break;
+    }
+  }
+
+  for (const auto& collision : problem.monitors.collisions) {
+    if (collision.geometry_region.empty() && collision.axis >= problem.grid.dims) {
+      issues.push_back({"collision monitor axis must be in [0, grid.dims)", true});
+      break;
+    }
+    if (collision.component >= problem.field_components) {
+      issues.push_back({"collision monitor component must be in [0, field_components)", true});
+      break;
+    }
+    if (!collision.geometry_region.empty() &&
+        std::none_of(problem.geometry.begin(), problem.geometry.end(), [&](const GeometryRegion& region) {
+          return region.name == collision.geometry_region;
+        })) {
+      issues.push_back({"collision monitor geometry_region must reference an existing geometry region", true});
+      break;
+    }
+    if (collision.shell_thickness < 0.0) {
+      issues.push_back({"collision monitor shell_thickness must be non-negative", true});
+      break;
+    }
+    if (collision.threshold < 0.0) {
+      issues.push_back({"collision monitor threshold must be non-negative", true});
       break;
     }
   }

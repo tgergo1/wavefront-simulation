@@ -7,6 +7,14 @@
     "periodic_absorbed_energy": 0.0,
     "pml_absorbed_energy": 1.22726
   },
+  "collision_wavefronts": {
+    "class_pair_count": 1,
+    "integrated_collision": 4.469593540158515,
+    "peak_collision_activity_frame": 1.0,
+    "peak_collision_monitor": 0.0007876121669886476,
+    "peak_self_activity_frame": 1.0,
+    "wave_pair_count": 1
+  },
   "double_slit": {
     "early_far_right_rms": 1.937236515949214e-49,
     "screen_max_abs": 0.00033881782340119244,
