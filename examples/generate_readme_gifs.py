@@ -1423,15 +1423,16 @@ def scenario_3d_volume() -> Path:
         nx,
         ny,
         nz,
-        stiffness_expr="1.5",
+        stiffness_expr="2.25e9",
         source_expr=(
-            "32.0*sin(46*t)*exp(-24*t)*exp(-((x_0-0.50)*(x_0-0.50)+"
-            "(x_1-0.50)*(x_1-0.50)+(x_2-0.50)*(x_2-0.50))/0.0018)"
+            "12.0*sin(16*t)*exp(-7*t)*exp(-((x_0-0.50)*(x_0-0.50)+"
+            "(x_1-0.50)*(x_1-0.50)+(x_2-0.50)*(x_2-0.50))/0.0055)"
         ),
-        damping_expr="0.0001",
+        damping_expr="0.001",
         dispersion_expr="0.0",
         boundaries=pml_boundaries_nd(3, "10.0"),
     )
+    problem.medium.density = wf.SymbolicExpr("1000.0")
 
     solver = wf.Solver(problem, make_config(wf.SolverMode.LinearApprox))
     solver.run(70)

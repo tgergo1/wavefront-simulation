@@ -49,9 +49,10 @@ Right: transverse scalar wave under the same source and medium, for comparison.
 
 ![Longitudinal wave divergence vs transverse comparison](docs/assets/wavefield-longitudinal.gif)
 
-### 7) 3D Wavefield (Volumetric Perspective)
+### 7) 3D Water Wave (Volumetric Perspective)
 
-Full 3D simulation rendered as a perspective volume (not slice planes), with a rotating camera to show depth.
+A submerged pulse propagating through the library's built-in homogeneous water material,
+rendered as a full 3D perspective volume (not slice planes) with a rotating camera to show depth.
 
 ![3d wave volume](docs/assets/wavefield-3d-volume.gif)
 
