@@ -54,8 +54,8 @@
     "transmitted_flux": 5.024593901518272e-23
   },
   "volume_3d": {
-    "active_voxels_midframe": 13800,
-    "isotropy_spread": 5.784837287038563e-15,
-    "scale": 0.0013519147272031328
+    "active_voxels_midframe": 4061,
+    "isotropy_spread": 2.0555832318636807e-15,
+    "scale": 2.5868801475462505e-10
   }
 }
