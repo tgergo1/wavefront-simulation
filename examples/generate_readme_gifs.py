@@ -1418,24 +1418,24 @@ def scenario_3d_volume() -> Path:
     nz = 31
     frames = 72
     steps_per_frame = 4
-    water_density_expr = "1000.0"
-    water_stiffness_expr = "2.25e9"
-    water_damping_expr = "0.001"
+    water_density = "1000.0"
+    water_stiffness = "2.25e9"
+    water_damping = "0.001"
 
     problem = make_problem_3d(
         nx,
         ny,
         nz,
-        stiffness_expr=water_stiffness_expr,
+        stiffness_expr=water_stiffness,
         source_expr=(
             "12.0*sin(16*t)*exp(-7*t)*exp(-((x_0-0.50)*(x_0-0.50)+"
             "(x_1-0.50)*(x_1-0.50)+(x_2-0.50)*(x_2-0.50))/0.0055)"
         ),
-        damping_expr=water_damping_expr,
+        damping_expr=water_damping,
         dispersion_expr="0.0",
         boundaries=pml_boundaries_nd(3, "10.0"),
     )
-    problem.medium.density = wf.SymbolicExpr(water_density_expr)
+    problem.medium.density = wf.SymbolicExpr(water_density)
 
     solver = wf.Solver(problem, make_config(wf.SolverMode.LinearApprox))
     solver.run(70)
