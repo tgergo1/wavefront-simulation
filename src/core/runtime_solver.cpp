@@ -1028,13 +1028,16 @@ class RuntimeSolver final : public ISolver {
   void prepare_spatial_metadata() {
     const std::size_t points = grid_.total_points();
     const std::size_t dims = grid_.dims();
+    index_cache_.assign(points * dims, 0);
     coordinate_cache_.assign(points * dims, 0.0L);
     region_index_cache_.assign(points, -1);
 
     for (std::size_t flat = 0; flat < points; ++flat) {
-      const auto index = grid_.unravel_index(flat);
+      const auto computed_index = grid_.unravel_index(flat);
+      auto index = index_for_flat(flat);
       auto coordinates = coordinates_for_flat(flat);
       for (std::size_t axis = 0; axis < dims; ++axis) {
+        index[axis] = computed_index[axis];
         coordinates[axis] = static_cast<long double>(grid_.origin()[axis] + index[axis] * grid_.spacing()[axis]);
       }
 
@@ -1238,19 +1241,16 @@ class RuntimeSolver final : public ISolver {
       return false;
     }
 
-    const std::vector<std::size_t> index = grid_.unravel_index(flat);
+    const auto index = index_for_flat(flat);
     for (std::size_t axis = 0; axis < grid_.dims(); ++axis) {
       for (std::size_t step = 1; step <= shell_cells; ++step) {
         if (index[axis] < step || index[axis] + step >= grid_.shape()[axis]) {
           return true;
         }
 
-        auto lower = index;
-        lower[axis] -= step;
-        auto upper = index;
-        upper[axis] += step;
-        if (region_index_cache_[grid_.flatten_index(lower)] != target_region_index ||
-            region_index_cache_[grid_.flatten_index(upper)] != target_region_index) {
+        const std::size_t stride = grid_.strides()[axis];
+        if (region_index_cache_[flat - step * stride] != target_region_index ||
+            region_index_cache_[flat + step * stride] != target_region_index) {
           return true;
         }
       }
@@ -1273,7 +1273,7 @@ class RuntimeSolver final : public ISolver {
       return is_geometry_surface_cell(flat, target_region, shell_cells);
     }
 
-    const std::vector<std::size_t> index = grid_.unravel_index(flat);
+    const auto index = index_for_flat(flat);
     const std::size_t face_index = upper_face ? (grid_.shape()[axis] - 1) : 0;
     return index[axis] == face_index;
   }
@@ -1296,6 +1296,39 @@ class RuntimeSolver final : public ISolver {
   std::span<const long double> coordinates_for_flat(std::size_t flat) const {
     assert(flat < grid_.total_points());
     return {coordinate_cache_.data() + flat * grid_.dims(), grid_.dims()};
+  }
+
+  std::span<std::size_t> index_for_flat(std::size_t flat) {
+    assert(flat < grid_.total_points());
+    return {index_cache_.data() + flat * grid_.dims(), grid_.dims()};
+  }
+
+  std::span<const std::size_t> index_for_flat(std::size_t flat) const {
+    assert(flat < grid_.total_points());
+    return {index_cache_.data() + flat * grid_.dims(), grid_.dims()};
+  }
+
+  std::size_t neighbor_flat(std::span<const std::size_t> center, std::size_t center_flat, std::size_t axis, int delta) const {
+    const int extent = static_cast<int>(grid_.shape()[axis]);
+    const int base = static_cast<int>(center[axis]);
+    int target = base + delta;
+
+    if (target >= 0 && target < extent) {
+      return center_flat + static_cast<std::ptrdiff_t>(delta) * static_cast<std::ptrdiff_t>(grid_.strides()[axis]);
+    }
+
+    const bool upper = target >= extent;
+    const FaceBoundary& face = face_boundary(axis, upper);
+    if (face.type == BoundaryType::Periodic) {
+      target %= extent;
+      if (target < 0) {
+        target += extent;
+      }
+    } else {
+      target = upper ? (extent - 1) : 0;
+    }
+
+    return center_flat + static_cast<std::ptrdiff_t>(target - base) * static_cast<std::ptrdiff_t>(grid_.strides()[axis]);
   }
 
   const CompiledGeometryRegion* region_for_flat(std::size_t flat) const {
@@ -1368,12 +1401,13 @@ class RuntimeSolver final : public ISolver {
 
   double boundary_ghost_value(
       const FieldBuffer<double>& field,
-      const std::vector<std::size_t>& center,
+      std::span<const std::size_t>,
+      std::size_t center_flat,
       std::size_t component,
       std::size_t axis,
       bool upper) const {
     const FaceBoundary& face = face_boundary(axis, upper);
-    const double u0 = field.at_index(center, component);
+    const double u0 = field.at_flat(center_flat, component);
     const double h = grid_.spacing()[axis];
 
     switch (face.type) {
@@ -1384,7 +1418,7 @@ class RuntimeSolver final : public ISolver {
       case BoundaryType::Robin:
         return 2.0 * face.parameter - u0;
       case BoundaryType::Impedance: {
-        const double velocity = (current_.at_index(center, component) - previous_.at_index(center, component)) / dt_;
+        const double velocity = (current_.at_flat(center_flat, component) - previous_.at_flat(center_flat, component)) / dt_;
         return u0 - face.parameter * dt_ * velocity;
       }
       case BoundaryType::PML: {
@@ -1398,7 +1432,8 @@ class RuntimeSolver final : public ISolver {
 
   double neighbor_value(
       const FieldBuffer<double>& field,
-      const std::vector<std::size_t>& center,
+      std::span<const std::size_t> center,
+      std::size_t center_flat,
       std::size_t component,
       std::size_t axis,
       int delta) const {
@@ -1407,9 +1442,8 @@ class RuntimeSolver final : public ISolver {
     int target = base + delta;
 
     if (target >= 0 && target < static_cast<int>(extent)) {
-      auto index = center;
-      index[axis] = static_cast<std::size_t>(target);
-      return field.at_index(index, component);
+      return field.at_flat(center_flat + static_cast<std::ptrdiff_t>(delta) * static_cast<std::ptrdiff_t>(grid_.strides()[axis]),
+                           component);
     }
 
     const bool upper = target >= static_cast<int>(extent);
@@ -1419,16 +1453,17 @@ class RuntimeSolver final : public ISolver {
       if (target < 0) {
         target += static_cast<int>(extent);
       }
-      auto index = center;
-      index[axis] = static_cast<std::size_t>(target);
-      return field.at_index(index, component);
+      return field.at_flat(
+          center_flat +
+              static_cast<std::ptrdiff_t>(target - base) * static_cast<std::ptrdiff_t>(grid_.strides()[axis]),
+          component);
     }
 
-    return boundary_ghost_value(field, center, component, axis, upper);
+    return boundary_ghost_value(field, center, center_flat, component, axis, upper);
   }
 
   double laplacian_at(const FieldBuffer<double>& field, std::size_t flat, std::size_t component) const {
-    const std::vector<std::size_t> center = grid_.unravel_index(flat);
+    const auto center = index_for_flat(flat);
 
     double lap = 0.0;
     const double u0 = field.at_flat(flat, component);
@@ -1439,16 +1474,16 @@ class RuntimeSolver final : public ISolver {
                                center[axis] + 2 < grid_.shape()[axis];
 
       if (can_use_4th) {
-        const double u_m2 = neighbor_value(field, center, component, axis, -2);
-        const double u_m1 = neighbor_value(field, center, component, axis, -1);
-        const double u_p1 = neighbor_value(field, center, component, axis, +1);
-        const double u_p2 = neighbor_value(field, center, component, axis, +2);
+        const double u_m2 = neighbor_value(field, center, flat, component, axis, -2);
+        const double u_m1 = neighbor_value(field, center, flat, component, axis, -1);
+        const double u_p1 = neighbor_value(field, center, flat, component, axis, +1);
+        const double u_p2 = neighbor_value(field, center, flat, component, axis, +2);
         lap += (-u_p2 + 16.0 * u_p1 - 30.0 * u0 + 16.0 * u_m1 - u_m2) * (inv_h2 / 12.0);
         continue;
       }
 
-      const double u_m1 = neighbor_value(field, center, component, axis, -1);
-      const double u_p1 = neighbor_value(field, center, component, axis, +1);
+      const double u_m1 = neighbor_value(field, center, flat, component, axis, -1);
+      const double u_p1 = neighbor_value(field, center, flat, component, axis, +1);
       lap += (u_p1 - 2.0 * u0 + u_m1) * inv_h2;
     }
 
@@ -1456,40 +1491,14 @@ class RuntimeSolver final : public ISolver {
   }
 
   double directional_gradient(const FieldBuffer<double>& field, std::size_t flat, std::size_t component, std::size_t axis) const {
-    const std::vector<std::size_t> center = grid_.unravel_index(flat);
-    const double u_m1 = neighbor_value(field, center, component, axis, -1);
-    const double u_p1 = neighbor_value(field, center, component, axis, +1);
+    const auto center = index_for_flat(flat);
+    const double u_m1 = neighbor_value(field, center, flat, component, axis, -1);
+    const double u_p1 = neighbor_value(field, center, flat, component, axis, +1);
     return (u_p1 - u_m1) / (2.0 * grid_.spacing()[axis]);
   }
 
-  std::vector<std::size_t> neighbor_center(
-      const std::vector<std::size_t>& center,
-      std::size_t axis,
-      int delta) const {
-    auto result = center;
-    int target = static_cast<int>(center[axis]) + delta;
-    const auto extent = static_cast<int>(grid_.shape()[axis]);
-
-    if (target >= 0 && target < extent) {
-      result[axis] = static_cast<std::size_t>(target);
-    } else {
-      const bool upper = target >= extent;
-      const FaceBoundary& face = face_boundary(axis, upper);
-      if (face.type == BoundaryType::Periodic) {
-        target %= extent;
-        if (target < 0) {
-          target += extent;
-        }
-        result[axis] = static_cast<std::size_t>(target);
-      } else {
-        result[axis] = upper ? static_cast<std::size_t>(extent - 1) : 0;
-      }
-    }
-    return result;
-  }
-
   double grad_div_component_at(const FieldBuffer<double>& field, std::size_t flat, std::size_t component_i) const {
-    const std::vector<std::size_t> center = grid_.unravel_index(flat);
+    const auto center = index_for_flat(flat);
     const std::size_t n_coupled = std::min(grid_.dims(), problem_.field_components);
     double result = 0.0;
 
@@ -1498,19 +1507,21 @@ class RuntimeSolver final : public ISolver {
         const double h = grid_.spacing()[j];
         const double inv_h2 = 1.0 / (h * h);
         const double u_c = field.at_flat(flat, j);
-        const double u_p = neighbor_value(field, center, j, j, +1);
-        const double u_m = neighbor_value(field, center, j, j, -1);
+        const double u_p = neighbor_value(field, center, flat, j, j, +1);
+        const double u_m = neighbor_value(field, center, flat, j, j, -1);
         result += (u_p - 2.0 * u_c + u_m) * inv_h2;
       } else {
         const double h_i = grid_.spacing()[component_i];
         const double h_j = grid_.spacing()[j];
-        const auto center_pi = neighbor_center(center, component_i, +1);
-        const auto center_mi = neighbor_center(center, component_i, -1);
+        const std::size_t center_pi_flat = neighbor_flat(center, flat, component_i, +1);
+        const std::size_t center_mi_flat = neighbor_flat(center, flat, component_i, -1);
+        const auto center_pi = index_for_flat(center_pi_flat);
+        const auto center_mi = index_for_flat(center_mi_flat);
 
-        const double u_pp = neighbor_value(field, center_pi, j, j, +1);
-        const double u_pm = neighbor_value(field, center_pi, j, j, -1);
-        const double u_mp = neighbor_value(field, center_mi, j, j, +1);
-        const double u_mm = neighbor_value(field, center_mi, j, j, -1);
+        const double u_pp = neighbor_value(field, center_pi, center_pi_flat, j, j, +1);
+        const double u_pm = neighbor_value(field, center_pi, center_pi_flat, j, j, -1);
+        const double u_mp = neighbor_value(field, center_mi, center_mi_flat, j, j, +1);
+        const double u_mm = neighbor_value(field, center_mi, center_mi_flat, j, j, -1);
 
         result += (u_pp - u_pm - u_mp + u_mm) / (4.0 * h_i * h_j);
       }
@@ -1855,7 +1866,7 @@ class RuntimeSolver final : public ISolver {
     }
 
     for (std::size_t flat = 0; flat < grid_.total_points(); ++flat) {
-      const std::vector<std::size_t> index = grid_.unravel_index(flat);
+      const auto index = index_for_flat(flat);
       const std::size_t face_index = monitor.upper_face ? (grid_.shape()[monitor.axis] - 1) : 0;
       if (index[monitor.axis] != face_index) {
         continue;
@@ -2001,6 +2012,7 @@ class RuntimeSolver final : public ISolver {
   std::vector<CompiledWaveSource> compiled_sources_;
   std::vector<std::string> source_classes_;
   std::vector<CompiledGeometryRegion> geometry_regions_;
+  std::vector<std::size_t> index_cache_;
   std::vector<long double> coordinate_cache_;
   std::vector<int> region_index_cache_;
   std::vector<double> cached_density_;
