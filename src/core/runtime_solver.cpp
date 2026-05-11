@@ -1033,12 +1033,12 @@ class RuntimeSolver final : public ISolver {
     region_index_cache_.assign(points, -1);
 
     for (std::size_t flat = 0; flat < points; ++flat) {
-      const auto computed_index = grid_.unravel_index(flat);
-      auto index = index_for_flat(flat);
+      const auto unraveled_index = grid_.unravel_index(flat);
+      auto cached_index = index_for_flat(flat);
       auto coordinates = coordinates_for_flat(flat);
       for (std::size_t axis = 0; axis < dims; ++axis) {
-        index[axis] = computed_index[axis];
-        coordinates[axis] = static_cast<long double>(grid_.origin()[axis] + index[axis] * grid_.spacing()[axis]);
+        cached_index[axis] = unraveled_index[axis];
+        coordinates[axis] = static_cast<long double>(grid_.origin()[axis] + unraveled_index[axis] * grid_.spacing()[axis]);
       }
 
       for (std::size_t offset = 0; offset < geometry_regions_.size(); ++offset) {
@@ -1401,7 +1401,6 @@ class RuntimeSolver final : public ISolver {
 
   double boundary_ghost_value(
       const FieldBuffer<double>& field,
-      std::span<const std::size_t>,
       std::size_t center_flat,
       std::size_t component,
       std::size_t axis,
@@ -1459,7 +1458,7 @@ class RuntimeSolver final : public ISolver {
           component);
     }
 
-    return boundary_ghost_value(field, center, center_flat, component, axis, upper);
+    return boundary_ghost_value(field, center_flat, component, axis, upper);
   }
 
   double laplacian_at(const FieldBuffer<double>& field, std::size_t flat, std::size_t component) const {
