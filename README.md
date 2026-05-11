@@ -143,6 +143,7 @@ GPL-3.0-only. See `LICENSE`.
 ## Documentation
 
 - `docs/API_REFERENCE.md`
+- `docs/PERFORMANCE_COMPARISON.md`
 - `docs/PERFORMANCE_REPORT.md`
 - `docs/MATHEMATICAL_DERIVATIONS.md`
 - `docs/VALIDATION_REPORT.md`
