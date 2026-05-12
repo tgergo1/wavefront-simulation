@@ -84,6 +84,20 @@ Per-cell coordinates and geometry-region membership are cached during initializa
 
 `deterministic_parallel_for()` now falls back to serial execution for very small partitions. This keeps large workloads parallel while avoiding repeated thread startup costs on small grids.
 
+### Cached flat-to-index metadata in solver hot paths
+
+The runtime solver now caches the unraveled grid index for every flat cell during
+initialization and reuses that metadata in the hottest stencil paths:
+
+- `laplacian_at()`
+- `directional_gradient()`
+- `grad_div_component_at()`
+- monitor face scans and geometry-surface checks
+
+This removes repeated `GridLayout::unravel_index()` calls and lets neighbor reads
+advance by precomputed strides instead of rebuilding temporary index vectors in
+the inner loop.
+
 ### Better default build mode
 
 For single-config generators, CMake now defaults to `RelWithDebInfo`, which gives optimized builds without losing profiler-friendly symbols.
